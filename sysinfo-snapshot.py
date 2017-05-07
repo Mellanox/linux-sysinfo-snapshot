@@ -9,6 +9,7 @@ import commands
 import collections
 import time
 import signal
+import shutil
 
 try:
     import json
@@ -238,6 +239,9 @@ available_internal_files_collection = []
 external_files_collection = [["kernel config", "/boot/config-$(uname -r)"], ["config.gz", "/proc/config.gz"], ["dmesg", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["syslog", "/var/log/"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR-IOV", ""]]
 
 available_external_files_collection = []
+
+copy_under_files = [["etc_udev_rulesd", "/etc/udev/rules.d/"], ["lib_udev_rulesd", "/lib/udev/rules.d/"]]
+
 
 ###########################################################
 #    JSON Handlers And Global Variables
@@ -1674,6 +1678,18 @@ def arrange_external_files_section():
             add_external_file_if_exists(pair[0], pair[1])
             if verbose_count == 2:
                 print("\t\t" + pair[0] + " - end")
+    # Copying files or dirs to the tgz without appearing in the HTML
+    for pair in copy_under_files:
+        if not os.path.isdir(pair[1]):
+            continue
+        if verbose_count == 2:
+            print("\t\t" + pair[1] + " - start")
+        try:
+            shutil.copytree(pair[1], path + file_name + "/" + pair[0])
+        except:
+            pass
+        if verbose_count == 2:
+            print("\t\t" + pair[1] + " - end") 
     if verbose_flag:
         print("\tGenerating external files section has ended")
         print("\t----------------------------------------------------")
