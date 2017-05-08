@@ -215,7 +215,7 @@ fw_collection = ["itrace", "mlxmcg -d", "fw_ini_dump", "mlxdump"]
 
 ib_collection = []
 
-commands_collection = ["ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "itrace", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", "df -lh", "ethtool --version", "eth_tool_all_interfaces", "fdisk -l", "fw_ini_dump", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", "initctl list", "ip a s", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod", "lspci", "lspci -tv", "lspci_xxxvvv", "mount", "mstregdump-func", "netstat -anp", "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info", "ps xfalw", "route -n", "service --status-all", "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all", "sysctl -a", "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname -a", "uptime", "yy_MLX_modules_parameters", "yy_IB_modules_parameters", "zz_proc_net_bonding_files", "zz_sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "mlxcables --DDM/--read_all_regs", "ip addr show", "ip -6 addr show", "ip link show", "ip route show", "ip -6 route show", "modinfo", "show_pretty_gids", "mlxdump", "gcc --version"]
+commands_collection = ["ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "itrace", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", "df -lh", "ethtool --version", "eth_tool_all_interfaces", "fdisk -l", "fw_ini_dump", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", "initctl list", "ip a s", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod", "lspci", "lspci -tv", "lspci_xxxvvv", "mount", "mstregdump-func", "netstat -anp", "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info", "ps -eLo", "route -n", "service --status-all", "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all", "sysctl -a", "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname -a", "uptime", "yy_MLX_modules_parameters", "yy_IB_modules_parameters", "zz_proc_net_bonding_files", "zz_sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "mlxcables --DDM/--read_all_regs", "ip addr show", "ip -6 addr show", "ip link show", "ip route show", "ip -6 route show", "modinfo", "show_pretty_gids", "mlxdump", "gcc --version"]
 
 if (cur_os != "debian"):
     commands_collection.extend(["chkconfig --list | sort"])
@@ -855,7 +855,12 @@ def add_command_if_exists(command):
         status, result = commands.getstatusoutput("timeout 10s" + command)
         if status != 0:
             print_err_flag = 1
-            result = "Could not run: " + '"' + "" + command + '"'
+            result = "Could not run: " + '"' + command + '"'
+    elif "ps -eLo" in command:
+        status, result = commands.getstatusoutput("timeout 10s ps -eLo lstart,%cpu,psr,nlwp,f,uid,pid,ppid,pri,rtprio,ni,vsz,rss,stat,tty,time,wchan,args")
+        if status != 0:
+            print_err_flag = 1
+            result = "Could not run: " + '"' + command + '"'
     else:
         # invoking regular command
         status, result = commands.getstatusoutput(command)
