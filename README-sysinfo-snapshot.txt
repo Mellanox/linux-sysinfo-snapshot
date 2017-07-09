@@ -18,6 +18,10 @@ There are many flags (options) that you can provide as below:
 * The later commands/functions can be added to the output by providing one of the flags/options -fw|--firmware
 * You may consider little delay if -fw|--firmware is provided
 
+- PCIE related server commands/functions:
+* e.g. lspci -vvvxxxxx
+* These commands/functions can be added to the output by providing --pcie flag/option
+
 - By default I2C firmware related server commands/functions are not added to the output
 * They can be added to the output by providing the flag/option '--mtusb' 
 
@@ -62,7 +66,11 @@ sysinfo-snapshot-<version>-<hostname>-<year><month><day>-<hour><minutes> content
 	- dummy_paths - contains all not existing internal files (/paths)
 	- dummy_external_paths - contains all not existing external files (/paths)
 	- ... 
-- Directory ibdiagnet - contains all ibdiagnet command out files (included only if IB fabric and -no_ib flag is not provided)
+- Directory etc_udev_rulesd	- contains all files under /etc/udev/rules.d
+- Directory ethtool_S		- contains all files which are generated from invoking ethtool -S <interface> 
+- Directory firmware		- contains all firmware files (mst dump files and flint output) (included only if -fw|--firmware flag is provided)
+- Directory ibdiagnet		- contains all ibdiagnet command out files (included only if IB fabric and -no_ib flag is not provided)
+- Directory lib_udev_rulesd	- contains all files under /lib/udev/rules.d
 - Other Helping Files, e.g. external files.
 
 

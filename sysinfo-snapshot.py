@@ -1,15 +1,20 @@
 #!/usr/bin/python
+# -*- python -*-
+#
+# Author:  Nizar Swidan  nizars@mellanox.com -- Created: 2015
+__author__ = 'nizars'
+
 
 import subprocess
 import sys
 import re
 import tarfile
 import os
-import commands 
 import collections
 import time
 import signal
 import shutil
+import platform
 
 try:
     import json
@@ -18,17 +23,51 @@ except ImportError:
     json_found = False
 
 ###########################################################
+#        Get Status Ouptut 
+# (replacement old the depreciated call st, res = get_status_output("..")
+
+def standarize_str(tmp):
+    ''' if python version major is 3, then tmp is unicode (utf-8) byte string 
+        and need to be converted to regular string
+    '''
+    if sys.version_info[0] == 2:
+        return tmp.strip()
+    elif sys.version_info[0] == 3:
+        return str(tmp.strip(),'utf-8')
+    else:
+        return tmp.strip()
+
+def get_status_output(command):
+    p = subprocess.Popen([command], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    stdout, stderr = p.communicate()
+    return p.returncode, standarize_str(stdout)
+
+# Ditto but preserving the exit status.
+# Returns a pair (sts, output)
+#
+def getstatusoutput(cmd):
+    """Return (status, output) of executing cmd in a shell."""
+    pipe = os.popen('{ ' + cmd + '; } 2>&1', 'r')
+    text = pipe.read()
+    sts = pipe.close()
+    if sts is None: sts = 0
+    if text[-1:] == '\n': text = text[:-1]
+    return sts, text
+
+###########################################################
 #   SIGINT-2-Interrupt from keyboard; Handlers (Ctrl+C)
 
 def signal_handler(signal, frame):
     if (path_is_generated == 1):
-        invoke_command(['rm', '-rf', path])
+        get_status_output("rm -rf " + path)
+        #invoke_command(['rm', '-rf', path])
     else:
         # Remove tar out file
-        invoke_command(['rm', '-rf', path+file_name+".tgz"])
+        get_status_output("rm -rf " + path + file_name + ".tgz")
+        #invoke_command(['rm', '-rf', path+file_name+".tgz"])
         remove_unwanted_files() 
     if driver_required_loading:
-        os.system('timeout 10s mst stop > /dev/null 2>&1')    
+        os.system('timeout 10s mst stop > /dev/null 2>&1')
     print("\nRunning sysinfo-snapshot was halted!\nNo out directories/files.\nNo changes in modules loading states.")
     sys.exit(0)
 
@@ -38,7 +77,7 @@ signal.signal(signal.SIGINT, signal_handler)
 ###########################################################
 #        General Variables
 
-version = "3.1.8"
+version = "3.2.0"
 
 sys_argv = sys.argv
 len_argv = len(sys.argv)
@@ -53,7 +92,7 @@ verbose_count = 0
 
 # is_ib = 0 if the server is configured as IB
 # is_ib != 0 if the server is configured as ETH
-is_ib, ib_res = commands.getstatusoutput("which ibnetdiscover 2>/dev/null")
+is_ib, ib_res = get_status_output("timeout 10s which ibnetdiscover 2>/dev/null")
 mlnx_cards_status = -1
 
 path_is_generated = 0
@@ -78,7 +117,7 @@ ibdiagnet_is_invoked = False
 # ibdiagnet_flag = True, means --ibdiagnet was provided
 ibdiagnet_flag = False
 
-ibswitches_st, ibswitches = commands.getstatusoutput("/usr/sbin/ibswitches")
+ibswitches_st, ibswitches = get_status_output("timeout 10s /usr/sbin/ibswitches")
 if ibswitches_st != 0:
     ibswitches = "Couldn't find command: ibswitches"
 else:
@@ -104,6 +143,11 @@ if os.path.exists("/sys/class/net"):
 # fw_flag can be converted to True by running the tool with -fw or --firmware flag
 fw_flag = False
 
+# pcie_flag = False, means not to add pcie_collection commands to the out file
+# pcie_flag = True, means to add pcie_collection commands to the out file
+# pcie_flag can be converted to True by running the tool with --pcie flag
+pcie_flag = False
+
 # mtusb_flag = False, means not to add I2C dump files
 # mtusb_flag = True, means to add I2C dump files
 # mtusb_flag can be converted to True by running the tool with --mtusb flag
@@ -127,8 +171,8 @@ mlxdump_is_string = True
 fw_ini_dump_is_string = True
 mstreg_dump_is_string = True
 
-sta, date_cmd = commands.getstatusoutput("date")
-sta, date_file = commands.getstatusoutput("echo $(date '+%Y%m%d-%H%M')")
+sta, date_cmd = get_status_output("timeout 10s date")
+sta, date_file = get_status_output("timeout 10s echo $(date '+%Y%m%d-%H%M')")
 
 st_saquery = 1
 
@@ -140,7 +184,7 @@ st_saquery = 1
 #Redhat and CentOS prints redhat
 supported_os_collection = ["redhat", "suse", "debian"]
 
-os_st, cur_os = commands.getstatusoutput("rpm --eval %{_vendor}")
+os_st, cur_os = get_status_output("timeout 10s rpm --eval %{_vendor}")
 
 def decide():
     print("Hence running sysinfo-snapshot may throw an exception or produce an unexpected output.")
@@ -159,22 +203,23 @@ if (os_st == 0):
         print("Operating system with vendor " + cur_os + " is not tested.")
         decide()
 else:
-    os_st, o_systems = commands.getstatusoutput("cat /etc/issue")
+    os_st, o_systems = get_status_output("timeout 10s cat /etc/redhat-release")
     if (os_st != 0):
-        print("Unable to distinguish operating system.")
-        decide()
-    else:
-        o_systems = o_systems.lower()
-        o_systems = o_systems.split()
-        if ( ("red" in o_systems and "hat" in o_systems) or ("redhat" in o_systems) or ("centos" in o_systems) or ("fedora" in o_systems) or ("scientific" in o_systems) ):
-            cur_os = "redhat"
-        elif ("suse" in o_systems):
-            cur_os = "suse"
-        elif ( ("ubuntu" in o_systems) or ("debian" in o_systems) ):
-            cur_os = "debian"
-        else:
+        os_st, o_systems = get_status_output("timeout 10s cat /etc/issue")
+        if (os_st != 0):
             print("Unable to distinguish operating system.")
             decide()
+    o_systems = o_systems.lower()
+    o_systems = o_systems.split()
+    if ( ("red" in o_systems and "hat" in o_systems) or ("redhat" in o_systems) or ("centos" in o_systems) or ("fedora" in o_systems) or ("scientific" in o_systems) ):
+        cur_os = "redhat"
+    elif ("suse" in o_systems):
+        cur_os = "suse"
+    elif ( ("ubuntu" in o_systems) or ("debian" in o_systems) ):
+        cur_os = "debian"
+    else:
+        print("Unable to distinguish operating system.")
+        decide()
 
 ###########################################################
 #               SR-IOV Global Variables
@@ -213,9 +258,11 @@ perf_external_files_collection = [["mlnx_tune -r", "mlnx_tune_r"]]
 
 fw_collection = ["itrace", "mlxmcg -d", "fw_ini_dump", "mlxdump"]
 
+pcie_collection = ["lspci -vvvxxxxx"]
+
 ib_collection = []
 
-commands_collection = ["ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "itrace", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", "df -lh", "ethtool --version", "eth_tool_all_interfaces", "fdisk -l", "fw_ini_dump", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", "initctl list", "ip a s", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod", "lspci", "lspci -tv", "lspci_xxxvvv", "mount", "mstregdump-func", "netstat -anp", "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info", "ps -eLo", "route -n", "service --status-all", "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all", "sysctl -a", "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname -a", "uptime", "yy_MLX_modules_parameters", "yy_IB_modules_parameters", "zz_proc_net_bonding_files", "zz_sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "mlxcables --DDM/--read_all_regs", "ip addr show", "ip -6 addr show", "ip link show", "ip route show", "ip -6 route show", "modinfo", "show_pretty_gids", "mlxdump", "gcc --version"]
+commands_collection = ["ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "itrace", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", "df -lh", "ethtool --version", "eth_tool_all_interfaces", "fdisk -l", "fw_ini_dump", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", "initctl list", "ip a s", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod", "lspci", "lspci -tv", "lspci_xxxvvv", "lspci -vvvxxxxx", "mount", "mstregdump-func", "netstat -anp", "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info", "ps -eLo", "route -n", "service --status-all", "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all", "sysctl -a", "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname -a", "uptime", "yy_MLX_modules_parameters", "yy_IB_modules_parameters", "zz_proc_net_bonding_files", "zz_sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "mlxcables --DDM/--read_all_regs", "ip addr show", "ip -6 addr show", "ip link show", "ip route show", "ip -6 route show", "modinfo", "show_pretty_gids", "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status"]
 
 if (cur_os != "debian"):
     commands_collection.extend(["chkconfig --list | sort"])
@@ -232,6 +279,8 @@ internal_files_collection = ["/etc/opensm/partitions.conf", "/etc/opensm/opensm.
 
 if (cur_os == "debian"):
     internal_files_collection.extend(["/etc/network/interfaces"])
+else:
+    internal_files_collection.extend(["/etc/redhat-release"])
 
 available_internal_files_collection = []
 
@@ -283,11 +332,12 @@ def represents_int(s):
     except ValueError:
         return False
 
+'''
 def invoke_command(str):
     p = subprocess.Popen(str, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = p.communicate()
     return out
-
+'''
 #**********************************************************
 #        show_pretty_gids Handler
 
@@ -351,7 +401,7 @@ def eth_tool_all_interfaces_handler():
     if not sys_class_net_exists:
         return "No Net Devices - The path /sys/class/net does not exist"
     
-    st, net_devices = commands.getstatusoutput("ls /sys/class/net")
+    st, net_devices = get_status_output("timeout 10s ls /sys/class/net")
     if (st != 0):
         return "Failed to run the command " + '"' + "ls /sys/class/net" + '"'
     net_devices = net_devices.split()
@@ -374,7 +424,8 @@ def eth_tool_all_interfaces_handler():
     global pf_devices
     pf_devices = net_devices
     if (len(net_devices) > 0):
-        invoke_command(['mkdir', path + file_name + "/ethtool_S"])
+        get_status_output("mkdir " + path + file_name + "/ethtool_S")
+        #invoke_command(['mkdir', path + file_name + "/ethtool_S"])
     
     first = True
     res = ""
@@ -385,7 +436,7 @@ def eth_tool_all_interfaces_handler():
         if (first == False):
             res += "\n\n"
         for option in options:
-            st, ethtool_interface = commands.getstatusoutput("ethtool " + option + " " + interface)
+            st, ethtool_interface = get_status_output("timeout 10s ethtool " + option + " " + interface)
             res += "ethtool " + option + " " + interface + "\n"
             if (st == 0):    
                 res += ethtool_interface
@@ -393,7 +444,7 @@ def eth_tool_all_interfaces_handler():
                 res += "Could not run command: ethtool " + option + " " + interface
             res += "\n____________\n\n"
         
-        st, ethtool_interface = commands.getstatusoutput("ethtool -S " + interface)
+        st, ethtool_interface = get_status_output("timeout 10s ethtool -S " + interface)
         if (st != 0):
             ethtool_interface = "Could not run command: ethtool -S " + interface
         
@@ -419,11 +470,31 @@ def modinfo_handler():
         if modinfo != '':
             modinfo += '\n---------------------------------------------------------------\n\n'
         modinfo += "modinfo " + module + " | grep 'filename\|version:'\n\n"
-        st, modinfo_module = commands.getstatusoutput("timeout 10s modinfo " + module + " | grep 'filename\|version:'")
+        st, modinfo_module = get_status_output("timeout 10s modinfo " + module + " | grep 'filename\|version:'")
         if (st != 0):
-            modinfo_module = "Could not run: " + '"' + "modinfo " + module + " | grep 'filename\|version:'"
+            modinfo_module = "Could not run: " + '"' + "timeout 10s modinfo " + module + " | grep 'filename\|version:'"
         modinfo += modinfo_module + "\n" 
     return modinfo
+
+#**********************************************************
+#        	cma_roce_mode/tos Handler
+
+def cma_roce_handler(func):
+    st, devices = get_status_output("timeout 10s ibstat | grep \"CA '\"")
+    if st != 0:
+        return "Failed to retrieve mlx devices"
+    if devices == "":
+        return "There are no mlx devices"
+    res = ""
+    first = True
+    for device in devices.splitlines():
+        _device = device.split("'")[1]
+        st, _device_res = get_status_output("timeout 10s cma_roce_" + func + " -d " + _device)
+        if not first:
+            res += "\n\n---------------\n\n"
+        res += _device_res
+        first = False
+    return res
 
 #**********************************************************
 #        	mlxdump Handler
@@ -431,7 +502,7 @@ def modinfo_handler():
 def mlxdump_handler():
     if not is_MFT_installed:
         return "MFT is not installed, please install MFT and try again."
-    dev_st, all_devices = commands.getstatusoutput("ls /dev/mst")
+    dev_st, all_devices = get_status_output("timeout 10s ls /dev/mst")
     if (dev_st != 0):
         return "There are no devices"
     devices = all_devices.split()
@@ -441,7 +512,7 @@ def mlxdump_handler():
     options = ["fsdump"]
     for device in devices:
         for option in options:
-            st, res = commands.getstatusoutput("timeout 30s mlxdump -d /dev/mst/" + device + " " + option + " > " + path + file_name + "/firmware/mlxdump_" + device.replace(":", "").replace(".", "") + "_" + option.replace("-", ""))
+            st, res = get_status_output("timeout 30s mlxdump -d /dev/mst/" + device + " " + option + " > " + path + file_name + "/firmware/mlxdump_" + device.replace(":", "").replace(".", "") + "_" + option.replace("-", ""))
     return "Links"
 
 def add_mlxdump_links():
@@ -455,7 +526,7 @@ def add_mlxdump_links():
 #        fw_ini_dump Handlers
 
 def fw_ini_dump_handler():
-    st, res = commands.getstatusoutput(
+    st, res = get_status_output(
         "for interface in `lspci |grep Mellanox | awk '{print $1}'`; " + 
         "do " +
             "mstflint -d $interface dc > " + path + file_name  + "/firmware/" + '"' + "mstflint_" + '"' + "$interface" + '"' + "_dc" + '"' + "; echo yes;"
@@ -468,7 +539,7 @@ def fw_ini_dump_handler():
         if not is_MFT_installed:
             return "MFT is not installed, please install MFT and try again."
         else:
-            st2, res2 = commands.getstatusoutput("for i2c in `mst status | grep ^/ | grep USB | awk '{print $1}'`; do echo yes; interface=${i2c##*/}; flint -d $i2c q > " + path + file_name + "/firmware/" + '"' + "flint_" + '"' + "$interface" + '"' + "_q" + '"' + "; flint -d $i2c dc > " + path + file_name + "/firmware/" + '"' + "flint_" + '"' + "$interface" + '"' + "_dc" + '"' + "; done")
+            st2, res2 = get_status_output("for i2c in `mst status | grep ^/ | grep USB | awk '{print $1}'`; do echo yes; interface=${i2c##*/}; flint -d $i2c q > " + path + file_name + "/firmware/" + '"' + "flint_" + '"' + "$interface" + '"' + "_q" + '"' + "; flint -d $i2c dc > " + path + file_name + "/firmware/" + '"' + "flint_" + '"' + "$interface" + '"' + "_dc" + '"' + "; done")
     
     if st == 0 and res == "" and st2 == 0 and res2 == "":
         return "NULL_1"
@@ -491,7 +562,7 @@ def add_fw_ini_dump_links():
 
 def ibdev2pcidev_handler():
     script = "if [ -d /sys/class/infiniband ]; then IBDEVS=$(ls /sys/class/infiniband); for ibdev in $IBDEVS; do cd /sys/class/infiniband/$ibdev/device; pcidev=$(pwd -P | xargs basename); echo $ibdev '==>' $pcidev; done; else echo Unable to get ibdev to pci mapping: /sys/class/infiniband does not exist.; fi"
-    st, res = commands.getstatusoutput(script)
+    st, res = get_status_output(script)
     if (st == 0):
         return res
     return "Could not run: " + '"' + "ibdev2pcidev" + '"'
@@ -502,7 +573,7 @@ def ibdev2pcidev_handler():
 def itrace_handler():
     if not is_MFT_installed:
         return "MFT is not installed, please install MFT and try again."
-    dev_st, all_devices = commands.getstatusoutput("ls /dev/mst")
+    dev_st, all_devices = get_status_output("timeout 10s ls /dev/mst")
     if (dev_st != 0):
         return "There are no devices"
     devices = all_devices.split()
@@ -519,7 +590,7 @@ def itrace_handler():
             if (flag != 0):
                 itrace += "\n****************************************\n\n"
             itrace += "itrace -d /dev/mst/" + device + " --noddr " + option + "\n\n"
-            itrace_st, itrace_device_option = commands.getstatusoutput("timeout 30s itrace -d /dev/mst/" + device + " --noddr " + option)
+            itrace_st, itrace_device_option = get_status_output("timeout 30s itrace -d /dev/mst/" + device + " --noddr " + option)
             if (itrace_st != 0):
                 itrace_device_option = "Could not run: " + '"' + "itrace -d /dev/mst/" + device + " --noddr " + option + '"'
             itrace += itrace_device_option + "\n"
@@ -530,7 +601,10 @@ def itrace_handler():
 #        itrace Handlers
 
 def mlxcables_options_handler():
-    st, mst_status = commands.getstatusoutput("timeout 10s mst start > /dev/null 2>&1; timeout 10s mst add cable > /dev/null 2>&1; timeout 10s mst add cable --with_ib > /dev/null 2>&1; timeout 10s mst status")
+    os.system("timeout 10s mst start > /dev/null 2>&1")
+    os.system("timeout 10s mst cable add > /dev/null 2>&1")
+    os.system("timeout 10s mst cable add --with_ib > /dev/null 2>&1")
+    st, mst_status = get_status_output("timeout 10s mst status")
     if not 'Cables:' in mst_status:
         return 'No cables were found'
     mlxcables = mst_status.split('Cables:')[1]
@@ -546,7 +620,7 @@ def mlxcables_options_handler():
             if flag != 0:
                 res += '\n\n****************************************\n\n'
             res += 'mlxcables -d ' + mlxcable + ' ' + option + '\n\n'
-            res_st, res_mlxcable_option = commands.getstatusoutput('timeout 10s mlxcables -d ' + mlxcable + ' ' + option)
+            res_st, res_mlxcable_option = get_status_output('timeout 10s mlxcables -d ' + mlxcable + ' ' + option)
             if res_st != 0:
                 res_mlxcable_option = 'Could not run: \"mlxcables -d ' + mlxcable + ' ' + option + '"'
             res += res_mlxcable_option
@@ -554,21 +628,34 @@ def mlxcables_options_handler():
 
     return res
 
+
+def mlxcables_standard_handler():
+    os.system("timeout 10s mst start > /dev/null 2>&1")
+    os.system("timeout 10s mst cable add > /dev/null 2>&1")
+    os.system("timeout 10s mst cable add --with_ib > /dev/null 2>&1")
+    st, res = get_status_output("mlxcables")
+    return res
+
 #**********************************************************
 #               lspci_xxxvvv Handlers
 
 def lspci_xxxvvv_handler():
-    all_hca = ""
+    cmd = "timeout 10s lspci | awk '{print $1}'"
     if fw_flag == False:
-        all_hca = " | grep Mell "
-    
-    st, res = commands.getstatusoutput(
-                                "for interface in `timeout 10s lspci " + all_hca + " | awk '{print $1}'`; " +
-                                "do " +
-                                        "timeout 10s lspci -s $interface -xxxvvv; " +
-                                "done")
-    if (st == 0 and res == ""):
+        cmd = "timeout 10s lspci | grep Mell | awk '{print $1}'"
+    st, output = get_status_output(cmd)
+    if (st == 0 and output == ""):
         return "There are no Mellanox cards"
+   
+    interfaces = output.splitlines()
+    res = ""
+    for i in range(0, len(interfaces)):
+        st2, output2 = get_status_output("timeout 10s lspci -s " + interfaces[i].strip() + " -xxxvvv")
+        if st2 == 0 and output2 != "":
+            res += output2
+            if i != len(interfaces)-1:
+                res += "\n----------------------------------------\n\n"
+
     if (st == 0):
         return res
     return "Exception was raised while running command."
@@ -579,7 +666,7 @@ def lspci_xxxvvv_handler():
 def mlxmcg_d_handler():
     if not is_MFT_installed:
         return "MFT is not installed, please install MFT and try again."
-    dev_st, all_devices = commands.getstatusoutput("ls /dev/mst")
+    dev_st, all_devices = get_status_output("timeout 10s ls /dev/mst")
     if (dev_st != 0):
         return "There are no devices"
     devices = all_devices.split()
@@ -591,7 +678,7 @@ def mlxmcg_d_handler():
         if (mlxmcg != ""):
             mlxmcg += "\n\n-------------------------------------------------------------\n\n"
         mlxmcg += "mlxmcg -d /dev/mst/" + device +"\n\n"
-        mlx_st, mlxmcg_device = commands.getstatusoutput("mlxmcg -d /dev/mst/" + device)
+        mlx_st, mlxmcg_device = get_status_output("timeout 10s mlxmcg -d /dev/mst/" + device)
         if (mlx_st != 0):
             mlxmcg_device = "Could not run: " + '"' + "mlxmcg -d /dev/mst/" + device + '"'
         mlxmcg += mlxmcg_device
@@ -602,7 +689,7 @@ def mlxmcg_d_handler():
 
 def mstregdump_func_handler():
     sleep_period = "2"
-    st, res = commands.getstatusoutput("for interface in `lspci |grep Mellanox | awk '{print $1}'`; do echo yes; for instance in 1 2 3; do temp='_'; temp=$interface$temp$instance; mstregdump $interface  > " + path + file_name + "/firmware/mstregdump_$temp; sleep " + sleep_period + "; done; done")
+    st, res = get_status_output("for interface in `lspci | grep Mellanox | grep \"\.0\" | awk '{print $1}'`; do echo yes; for instance in 1 2 3; do temp='_'; temp=$interface$temp$instance; mstregdump $interface  > " + path + file_name + "/firmware/mstregdump_$temp; sleep " + sleep_period + "; done; done")
     
     st2 = 0
     res2 = ""
@@ -610,7 +697,7 @@ def mstregdump_func_handler():
         if not is_MFT_installed:
             return "MFT is not installed, please install MFT and try again."
         else:
-            st2, res2 = commands.getstatusoutput("for i2c in `mst status | grep ^/ | grep USB | awk '{print $1}'`; do echo yes; for instance in 1 2 3; do temp='_'; interface=${i2c##*/}; temp=$interface$temp$instance; mstdump $i2c  > " + path + file_name + "/firmware/mstdump_$temp; sleep " + sleep_period + "; done; done")
+            st2, res2 = get_status_output("for i2c in `mst status | grep ^/ | grep USB | awk '{print $1}'`; do echo yes; for instance in 1 2 3; do temp='_'; interface=${i2c##*/}; temp=$interface$temp$instance; mstdump $i2c  > " + path + file_name + "/firmware/mstdump_$temp; sleep " + sleep_period + "; done; done")
     
     if st == 0 and res == "" and st2 == 0 and res2 == "":
         return "NULL_1"
@@ -635,7 +722,7 @@ def show_irq_affinity_all_handler():
     if (os.path.exists("/sys/class/net") == False):
         return "No Net Devices"
     net_devices = "" 
-    st, net_devices = commands.getstatusoutput("ls /sys/class/net")
+    st, net_devices = get_status_output("timeout 10s ls /sys/class/net")
     if (st != 0):
         return "Could not run: " + '"' + "ls /sys/class/net" + '"'
     net_devices += " mlx4 mlx5"
@@ -646,7 +733,7 @@ def show_irq_affinity_all_handler():
         if (interface == "lo" or interface == "bonding_masters"):
             continue
         res += "show_irq_affinity.sh " + interface + "\n"
-        st, show_irq_affinity = commands.getstatusoutput("show_irq_affinity.sh " + interface + " 2>/dev/null")
+        st, show_irq_affinity = get_status_output("timeout 10s show_irq_affinity.sh " + interface + " 2>/dev/null")
         
         if (st == 0 and show_irq_affinity != ""):
             res += show_irq_affinity
@@ -669,8 +756,11 @@ def zz_files_handler(root_dir):
                 res += root_dir + infile + ':\n\n'
                 try:
                     with open(root_dir + infile, 'r') as zz_file:
-                        res += zz_file.read()
-                except Exception, e:
+                        content = zz_file.read()
+                        if content == "":
+                            content = "Empty File"
+                        res += content
+                except Exception as e:
                     res += 'Could not read file\nError message: ' + str(e)
     if res == '':
         return 1, "Please make sure bonding module is loaded, you can do so by running 'modprob bonding'"
@@ -682,11 +772,13 @@ def zz_files_handler(root_dir):
 
 col_count=1
 
-iscsiadm_st, iscsiadm_res = commands.getstatusoutput("iscsiadm --version")
+iscsiadm_st, iscsiadm_res = get_status_output("timeout 10s iscsiadm --version")
 
 def add_command_if_exists(command):
     if ( (fw_flag == False) and (command in fw_collection) ):
-        return    
+        return   
+    if ( (pcie_flag == False) and (command in pcie_collection) ):
+        return 
     if ( (no_ib_flag == True) and (command in ib_collection) ):
         return
     print_err_flag = 1 
@@ -701,9 +793,18 @@ def add_command_if_exists(command):
         status = 0
         print_err_flag = 0
     elif (command == "service --status-all"):
-        status, result = commands.getstatusoutput("timeout 10s service --status-all")
+        status, result = get_status_output("timeout 10s service --status-all")
         if (status == 0 or status == 124):
             print_err_flag = 0
+    elif (command == "python_used_version"):
+        result = platform.python_version()
+        status = 0
+    elif (command == "cma_roce_mode"):
+        result = cma_roce_handler("mode")
+        status = 0
+    elif (command == "cma_roce_tos"):
+        result = cma_roce_handler("tos")
+        status = 0
     elif (command == "mlxdump"):
         result = mlxdump_handler()
         if result == "Links":
@@ -745,7 +846,7 @@ def add_command_if_exists(command):
         status = 0
         print_err_flag = 0
     elif (command == "mlxcables"):
-        st, result = commands.getstatusoutput("timeout 10s mst start > /dev/null 2>&1; timeout 10s mst add cable > /dev/null 2>&1; timeout 10s mst add cable --with_ib > /dev/null 2>&1; mlxcables")
+        result = mlxcables_standard_handler()
         status = 0
         print_err_flag = 0
     elif (command == "mlxcables --DDM/--read_all_regs"):
@@ -777,7 +878,7 @@ def add_command_if_exists(command):
         status = 0    
         print_err_flag = 0
     elif (command == "yy_MLX_modules_parameters"):
-        st, result = commands.getstatusoutput("awk '{ print FILENAME " + '"' + "=" + '"' + " $0  }' /sys/module/mlx*/parameters/*")
+        st, result = get_status_output("awk '{ print FILENAME " + '"' + "=" + '"' + " $0  }' /sys/module/mlx*/parameters/*")
         if (st == 0):
             status = 0
         else:
@@ -785,7 +886,7 @@ def add_command_if_exists(command):
             print_err_flag = 1
             result = "Could not run: " + '"' + " awk '{ print FILENAME " + '"' + "=" + '"' + " $0  }' /sys/module/mlx*/parameters/* " + '"'
     elif (command == "yy_IB_modules_parameters"):
-        st , result = commands.getstatusoutput("if [ -d /sys/class/infiniband ]; then awk '{ print FILENAME " + '"' + " = " + '"' + " $0  }' /sys/module/ib*/parameters/*; else echo Unable to get ib modules params : /sys/class/infiniband does not exist.; fi")
+        st , result = get_status_output("if [ -d /sys/class/infiniband ]; then awk '{ print FILENAME " + '"' + " = " + '"' + " $0  }' /sys/module/ib*/parameters/*; else echo Unable to get ib modules params : /sys/class/infiniband does not exist.; fi")
         if (st == 0):
             status = 0
         else:
@@ -817,32 +918,32 @@ def add_command_if_exists(command):
             status = 1
             print_err_flag = 1
     elif (command == "teamdctl_state"):
-        status, result = commands.getstatusoutput("for interface in `ls /sys/class/net/` ; do teamdctl $interface state ; done 2>/dev/null")
+        status, result = get_status_output("for interface in `ls /sys/class/net/` ; do teamdctl $interface state ; done 2>/dev/null")
         if (status != 0):
             print_err_flag = 1
             result = "Could not run: " + '"' + "for interface in `ls /sys/class/net/` ; do teamdctl $interface state ; done 2>/dev/null" + '"'
     elif (command == "teamdctl_state_view"):
-        status, result = commands.getstatusoutput("for interface in `ls /sys/class/net/` ; do teamdctl $interface state view ; done 2>/dev/null")
+        status, result = get_status_output("for interface in `ls /sys/class/net/` ; do teamdctl $interface state view ; done 2>/dev/null")
         if (status != 0):
             print_err_flag = 1
             result = "Could not run: " + '"' + "for interface in `ls /sys/class/net/` ; do teamdctl $interface state view ; done 2>/dev/null" + '"'
     elif (command == "teamdctl_config_dump"):
-        status, result = commands.getstatusoutput("for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump ; done 2>/dev/null")
+        status, result = get_status_output("for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump ; done 2>/dev/null")
         if (status != 0):
             print_err_flag = 1
-            result = "Could not run: " + '"' + "for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump ; done 2>/dev/null" + '"' 
+            result = "Could not run: " + '"' + "for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump ; done 2>/dev/null" + '"'
     elif (command == "teamdctl_config_dump_actual"):
-        status, result = commands.getstatusoutput("for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump actual ; done 2>/dev/null")
+        status, result = get_status_output("for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump actual ; done 2>/dev/null")
         if (status != 0):
             print_err_flag = 1
-            result = "Could not run: " + '"' + "for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump actual ; done 2>/dev/null" + '"' 
+            result = "Could not run: " + '"' + "for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump actual ; done 2>/dev/null" + '"'
     elif (command == "teamdctl_config_dump_noports"):
-        status, result = commands.getstatusoutput("for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump noports ; done 2>/dev/null")
+        status, result = get_status_output("for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump noports ; done 2>/dev/null")
         if (status != 0):
             print_err_flag = 1
             result = "Could not run: " + '"' + "for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump noports ; done 2>/dev/null" + '"'
     elif (command == "mlxconfig_query"):
-        status, result = commands.getstatusoutput("timeout 10s mlxconfig query")
+        status, result = get_status_output("timeout 10s mlxconfig query")
         if (status != 0):
             print_err_flag = 1
             result = "Could not run: " + '"' + "mlxconfig query" + '"'
@@ -852,18 +953,18 @@ def add_command_if_exists(command):
             else:
                 result = "No MST devices to perform mlxconfig query"
     elif "mst status" in command:
-        status, result = commands.getstatusoutput("timeout 10s" + command)
+        status, result = get_status_output("timeout 10s " + command)
         if status != 0:
             print_err_flag = 1
             result = "Could not run: " + '"' + command + '"'
     elif "ps -eLo" in command:
-        status, result = commands.getstatusoutput("timeout 10s ps -eLo lstart,%cpu,psr,nlwp,f,uid,pid,ppid,pri,rtprio,ni,vsz,rss,stat,tty,time,wchan,args")
+        status, result = get_status_output("timeout 10s ps -eLo lstart,%cpu,psr,nlwp,f,uid,pid,ppid,pri,rtprio,ni,vsz,rss,stat,tty,time,wchan,args")
         if status != 0:
             print_err_flag = 1
             result = "Could not run: " + '"' + command + '"'
     else:
         # invoking regular command
-        status, result = commands.getstatusoutput(command)
+        status, result = get_status_output("timeout 10s " + command)
         if (status != 0 and not command.startswith("service")):
             if not (iscsiadm_st == 0 and command.startswith("iscsiadm")):
                 result = "Could not run: " + '"' + command + '"'
@@ -891,19 +992,19 @@ def multicast_information_handler():
     if (st_saquery != 0):
         return "saquery command is not found"
     
-    st, saquery_g = commands.getstatusoutput("saquery -g 2>/dev/null")
+    st, saquery_g = get_status_output("timeout 10s saquery -g 2>/dev/null")
     if (st != 0):
         return "saquery -g command is not found"
     
     res = "MLIDs list: \n" + saquery_g + "\n\nMLIDs members for each multicast group:"
     
-    st, MLIDS = commands.getstatusoutput("saquery -g | grep -i Mlid | sed 's/\./ /g'|awk '{print $2}' | sort | uniq")
+    st, MLIDS = get_status_output("timeout 10s saquery -g | grep -i Mlid | sed 's/\./ /g'|awk '{print $2}' | sort | uniq")
     if (st != 0):
         return "Could not run: " + '"' + "saquery -g | grep -i Mlid | sed 's/\./ /g'|awk '{print $2}' | sort | uniq" + '"'
     MLIDS = MLIDS.split()    
     
     for MLID in MLIDS:
-        st, saquery_mlid = commands.getstatusoutput("saquery -m " + MLID + " --smkey 1 2>/dev/null")
+        st, saquery_mlid = get_status_output("timeout 10s saquery -m " + MLID + " --smkey 1 2>/dev/null")
         if (st != 0):
             saquery_mlid = "Could not run: " + '"' + "saquery -m " + MLID + " --smkey 1 2>/dev/null" + '"'
         res += "\nMembers of MLID " + MLID + " group:\n" + saquery_mlid + "\n============================================================"
@@ -911,7 +1012,7 @@ def multicast_information_handler():
     return res
 
 def perfquery_cards_ports_handler():
-    st, ibstat = commands.getstatusoutput("ibstat | grep " + '"' + "CA '\|Port " + '"' + " | grep -v GUID")
+    st, ibstat = get_status_output("timeout 10s ibstat | grep " + '"' + "CA '\|Port " + '"' + " | grep -v GUID")
     if st != 0:
         return "Could not run: ibstat"
     cards = ibstat.split("CA '")
@@ -931,7 +1032,7 @@ def perfquery_cards_ports_handler():
                             if not first:
                                 res += "\n\n============================================================\n\n"
                             res += "perfquery --Ca " + card_name + " --Port " + port_num + "\n\n"
-                            st, perfquery = commands.getstatusoutput("perfquery --Ca " + card_name + " --Port " + port_num)
+                            st, perfquery = get_status_output("timeout 10s perfquery --Ca " + card_name + " --Port " + port_num)
                             res += perfquery
                             first = False
             return res
@@ -944,7 +1045,7 @@ def ib_find_bad_ports_handler():
     if is_ib != 0:
         return "No ibnetdiscover"
     
-    st, iblinkinfo_bad = commands.getstatusoutput("iblinkinfo | grep Could")
+    st, iblinkinfo_bad = get_status_output("timeout 10s iblinkinfo | grep Could")
     if st != 0:
         return iblinkinfo_bad
     
@@ -959,7 +1060,7 @@ def ib_find_disabled_ports_handler():
     if is_ib != 0:
         return "No ibnetdiscover"
     
-    st, iblinkinfo_disabled = commands.getstatusoutput("iblinkinfo | grep Disabled")
+    st, iblinkinfo_disabled = get_status_output("timeout 10s iblinkinfo | grep Disabled")
     if st != 0:
         return iblinkinfo_disabled
     
@@ -971,7 +1072,7 @@ def ib_find_disabled_ports_handler():
     return res
 
 def calc_IP(MGID):
-    st, IP = commands.getstatusoutput("ip=`echo " + MGID + " | awk ' { mgid=$1; n=split(mgid, a, "+'"'+":"+'"'+"); if (a[2] == "+'"'+"401b"+'"'+") {upper=strtonum("+'"'+"0x"+'"'+" a[n-1]); lower=strtonum("+'"'+"0x"+'"'+" a[n]); addr=lshift(upper,16)+lower; addr=or(addr,0xe0000000); a1=and(addr,0xff); addr=rshift(addr,8); a2=and(addr,0xff); addr=rshift(addr,8); a3=and(addr,0xff); addr=rshift(addr,8); a4=and(addr,0xff); printf("+'"'+"%u.%u.%u.%u"+'"'+", a4, a3, a2, a1); } else { printf ("+'"'+"<IPv6>"+'"'+"); }; }'`; echo $ip")
+    st, IP = get_status_output("ip=`echo " + MGID + " | awk ' { mgid=$1; n=split(mgid, a, "+'"'+":"+'"'+"); if (a[2] == "+'"'+"401b"+'"'+") {upper=strtonum("+'"'+"0x"+'"'+" a[n-1]); lower=strtonum("+'"'+"0x"+'"'+" a[n]); addr=lshift(upper,16)+lower; addr=or(addr,0xe0000000); a1=and(addr,0xff); addr=rshift(addr,8); a2=and(addr,0xff); addr=rshift(addr,8); a3=and(addr,0xff); addr=rshift(addr,8); a4=and(addr,0xff); printf("+'"'+"%u.%u.%u.%u"+'"'+", a4, a3, a2, a1); } else { printf ("+'"'+"<IPv6>"+'"'+"); }; }'`; echo $ip")
     if (st == 0):
         return IP
     return "<N/A>"
@@ -982,7 +1083,7 @@ def ib_mc_info_show_handler():
     
     MAX_GROUPS=64
     
-    st, saquery = commands.getstatusoutput("saquery -m --smkey 1 2>/dev/null")
+    st, saquery = get_status_output("timeout 10s saquery -m --smkey 1 2>/dev/null")
     if (st != 0):
         return "Could not run: " + '"' + "saquery -m --smkey 1 2>/dev/null" + '"'
     saquery = saquery.split("\n")
@@ -1105,9 +1206,8 @@ def ib_switches_FW_scan_handler():
         fw_version = "N/A"
         fw_build_id = "N/A"
         hw_dev_rev = "N/A"
-        
         if ibdiagnet_is_invoked:
-            tmp_st, row = commands.getstatusoutput("awk '/START_NODES_INFO/,/END_NODES_INFO/' " + path+file_name+"/ibdiagnet/ibdiagnet2.db_csv | grep ^" + guid )
+            tmp_st, row = get_status_output("awk '/START_NODES_INFO/,/END_NODES_INFO/' " + path+file_name+"/ibdiagnet/ibdiagnet2.db_csv | grep ^" + guid )
             
             splt_row = re.split("[" + re.escape(",\n") + "]", row)
             
@@ -1127,7 +1227,7 @@ def ib_switches_FW_scan_handler():
             if (2 < len(splt_row) and (represents_Int_base_16(splt_row[2]) == True) ):
                 hw_dev_rev = str(int(splt_row[2],16))
         else:
-            tmp_st, vendstat_N = commands.getstatusoutput("vendstat -N " + lid)
+            tmp_st, vendstat_N = get_status_output("timeout 10s vendstat -N " + lid)
             if tmp_st == 0:
                 vendstat_N = vendstat_N.splitlines()
                 for row in vendstat_N:
@@ -1170,7 +1270,7 @@ def ib_topology_viewer_handler():
     if (is_ib != 0):
         return "No ibnetdiscover"
     
-    st, GUIDS = commands.getstatusoutput("cat " + path+file_name + "/ibnetdiscover_p | grep -v -i sfb | grep -e ^SW | awk '{print $4}' | uniq")
+    st, GUIDS = get_status_output("timeout 10s cat " + path+file_name + "/ibnetdiscover_p | grep -v -i sfb | grep -e ^SW | awk '{print $4}' | uniq")
     if (st != 0):
         return "Could not run: " + '"' + "cat " + path+file_name + "/ibnetdiscover_p | grep -v -i sfb | grep -e ^SW | awk '{print $4}' | uniq" + '"'
     if (GUIDS == ""):
@@ -1187,14 +1287,14 @@ def ib_topology_viewer_handler():
         if ( len(GUIDS[index].split()) > 1 ):
             continue
         
-        st, desc = commands.getstatusoutput("cat " + path+file_name + "/ibnetdiscover_p | grep -v -i sfb | grep -e ^SW | grep " + GUIDS[index] + "..x")
+        st, desc = get_status_output("timeout 10s cat " + path+file_name + "/ibnetdiscover_p | grep -v -i sfb | grep -e ^SW | grep " + GUIDS[index] + "..x")
         
         if (st == 0):
             HCA_ports_count = 0
             switch_ports_count = 0
             desc = desc.split("'")[1]
             
-            st, guid_ports = commands.getstatusoutput("cat " + path+file_name + "/ibnetdiscover_p | grep -v -i sfb | grep -e ^SW | grep " + GUIDS[index] + "..x | awk '{print $8}'")
+            st, guid_ports = get_status_output("timeout 10s cat " + path+file_name + "/ibnetdiscover_p | grep -v -i sfb | grep -e ^SW | grep " + GUIDS[index] + "..x | awk '{print $8}'")
             if (st == 0):
                 guid_ports = guid_ports.split("\n")
                 for guid_port in guid_ports:
@@ -1211,24 +1311,24 @@ def ib_topology_viewer_handler():
 def sm_master_is_handler():
     if (st_saquery != 0):
          return "saquery command is not found"
-    st, MasterLID = commands.getstatusoutput("/usr/sbin/sminfo | awk '{print $4}'")
+    st, MasterLID = get_status_output("timeout 10s /usr/sbin/sminfo | awk '{print $4}'")
     if (st != 0):
         return "Could not retrieve Master LID. Reason: Could not run " + '"' + "/usr/sbin/sminfo | awk '{print $4}'" + '"'
-    st, all_sms = commands.getstatusoutput("/usr/sbin/smpquery nodedesc " + MasterLID)
+    st, all_sms = get_status_output("timeuot 10s /usr/sbin/smpquery nodedesc " + MasterLID)
     if (st != 0):
         return "Could not retrieve all SM. Reason: Could not run " + '"' + "/usr/sbin/smpquery nodedesc " + MasterLID + '"'
     res = "IB fabric SM master is: (" + all_sms + ")\nAll SMs in the fabric: "
     
-    st, SMS = commands.getstatusoutput("saquery -s 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'")
+    st, SMS = get_status_output("timeout 10s saquery -s 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'")
     if (st != 0):
         return "Could not retrieve all SM. Reason: Could not run " + '"' + "saquery -s 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'" + '"'
     SMS = set(SMS.split())
     
     for SM in SMS:
-        st, smquery_nodedesc = commands.getstatusoutput("/usr/sbin/smpquery nodedesc " + SM)
+        st, smquery_nodedesc = get_status_output("timeout 10s /usr/sbin/smpquery nodedesc " + SM)
         if (st != 0):
             smquery_nodedesc = "Could not run " + '"' + "/usr/sbin/smpquery nodedesc " + SM + '"'
-        st, sminfo = commands.getstatusoutput("/usr/sbin/sminfo " + SM)
+        st, sminfo = get_status_output("timeout 10s /usr/sbin/sminfo " + SM)
         if (st != 0):
             sminfo = "Could not run " + '"' + "/usr/sbin/sminfo " + SM + '"'
         res += "\n\nSM: " + SM + "\n" + smquery_nodedesc + "\n" + sminfo
@@ -1241,13 +1341,14 @@ def sm_status_handler():
     res = ""
     
     for lo in range(0,4): 
-        commands.getstatusoutput("sleep 3")
-        st, SmActivity = commands.getstatusoutput("sminfo |awk '{ print $10 }'")
+        get_status_output("timeout 10s sleep 3")
+        st, SmActivity = get_status_output("timeout 10s sminfo |awk '{ print $10 }'")
         if (st != 0):
             SmActivity = "<N/A>"
-        st, c_time = commands.getstatusoutput("date +%T")
+        st, c_time = get_status_output("timeout 10s date +%T")
         if (st != 0):
             c_time = "time <N/A>"
+        c_time = c_time.strip()
         res += "SM activity on " + c_time + " is " + SmActivity + "\n"
         if (SmActivity != "<N/A>" and represents_Int(SmActivity, 10) == True):
             if (int(SmActivity) == SmActivity_1):
@@ -1266,13 +1367,13 @@ def sm_status_handler():
 
 def sm_version_handler():
     if (cur_os != "debian"):
-        st, res = commands.getstatusoutput("echo OpenSM installed packages: ; rpm -qa | grep opensm")
+        st, res = get_status_output("timeout 10s echo OpenSM installed packages: ; timeout 10s rpm -qa | grep opensm")
         if (st != 0):
-            res = "Couldn't find command: echo OpenSM installed packages: ; rpm -qa | grep opensm"
+            res = "Couldn't find command: timeout 10s echo OpenSM installed packages: ; timeout 10s rpm -qa | grep opensm"
     else:
-        st, res = commands.getstatusoutput("echo OpenSM installed packages: ; dpkg -l | grep opensm")
+        st, res = get_status_output("timeout 10s echo OpenSM installed packages: ; timeout 10s dpkg -l | grep opensm")
         if (st != 0):
-            res = "Couldn't find command: echo OpenSM installed packages: ; dpkg -l | grep opensm"
+            res = "Couldn't find command: timeout 10s echo OpenSM installed packages: ; timeout 10s dpkg -l | grep opensm"
     return res
 
 def ibdiagnet_handler():
@@ -1280,7 +1381,7 @@ def ibdiagnet_handler():
         global ibdiagnet_res
         if (os.path.exists(path+file_name+"/ibdiagnet") == False):
             os.mkdir(path+file_name+"/ibdiagnet")
-        st, ibdiagnet_res = commands.getstatusoutput("ibdiagnet -o " + path+file_name+"/ibdiagnet")
+        st, ibdiagnet_res = get_status_output("timeout 10s ibdiagnet -o " + path+file_name+"/ibdiagnet")
 
 def clean_ibnodes(ibnodes, start_string):
     res = ""
@@ -1292,7 +1393,7 @@ def clean_ibnodes(ibnodes, start_string):
 
 def update_saquery():
     global st_saquery
-    st_saquery, SAQUERY = commands.getstatusoutput("saquery 2>/dev/null")
+    st_saquery, SAQUERY = get_status_output("timeout 10s saquery 2>/dev/null")
 
 
 def add_fabric_command_if_exists(command):
@@ -1333,7 +1434,7 @@ def add_fabric_command_if_exists(command):
             result = ibswitches
     else:
         # invoking regular command
-        status, result = commands.getstatusoutput(command)
+        status, result = get_status_output("timeout 10s " + command)
         if (status != 0):
             result = "Couldn't find command: " + command
         elif result == "" and command == "ibhosts":
@@ -1347,7 +1448,7 @@ def add_fabric_command_if_exists(command):
 
 def add_internal_file_if_exists(file_full_path):
     # put provided file textual content in result
-    status, result = commands.getstatusoutput("cat " + file_full_path)
+    status, result = get_status_output("timeout 10s cat " + file_full_path)
     
     # add internal file to files dictionary only if exists
     if (status == 0):
@@ -1380,11 +1481,11 @@ def add_external_file_if_exists(field_name, curr_path):
     err_flag = 0
     err_command = "No '" + field_name + "' External File\nReason: Couldn't find command: "
     if (field_name == "kernel config"):
-        status, command_output = commands.getstatusoutput("cat " + curr_path)
+        status, command_output = get_status_output("timeout 10s cat " + curr_path)
         if (status == 0):
-            st , uname = commands.getstatusoutput("uname -r")
+            st , uname = get_status_output("timeout 10s uname -r")
             if (st == 0):
-                add_ext_file_handler(field_name, "config-" + uname, command_output)
+                add_ext_file_handler(field_name, "config-" + uname.strip(), command_output)
             else:
                 err_flag = 1
                 err_command += "uname -r"
@@ -1392,23 +1493,23 @@ def add_external_file_if_exists(field_name, curr_path):
             err_flag = 1
             err_command += "cat " + curr_path
     elif (field_name == "config.gz"):
-        unrelevant_st, unrelevant_res = commands.getstatusoutput("if [ -e /proc/config.gz ]; then cp /proc/config.gz " + path + file_name + "/config.gz; fi")
+        unrelevant_st, unrelevant_res = get_status_output("if [ -e /proc/config.gz ]; then cp /proc/config.gz " + path + file_name + "/config.gz; fi")
         if (unrelevant_st != 0):
             err_flag = 1
             err_command += "if [ -e /proc/config.gz ]; then cp /proc/config.gz " + path + file_name + "/config.gz; fi"
     elif (field_name == "syslog"):
-        status, command_output = commands.getstatusoutput("cat " + curr_path + "messages")
+        status, command_output = get_status_output("timeout 10s cat " + curr_path + "messages")
         if (status == 0):
             add_ext_file_handler(field_name, "messages", command_output)
         else:
-            status, command_output = commands.getstatusoutput("cat " + curr_path + "syslog")
+            status, command_output = get_status_output("timeout 10s cat " + curr_path + "syslog")
             if (status == 0):
                 add_ext_file_handler(field_name, "syslog", command_output)
             else:
                 err_flag = 1
                 err_command += "Neither " + '"' + "cat " + curr_path + "messages" + '"' + " Nor " + '"' + "cat " + curr_path + "syslog" + '"'
     elif (field_name == "libvma.conf"):
-        status, command_output = commands.getstatusoutput("cat " + curr_path)
+        status, command_output = get_status_output("timeout 10s cat " + curr_path)
         if (status == 0):
             add_ext_file_handler(field_name, field_name, command_output)
         else:
@@ -1416,10 +1517,10 @@ def add_external_file_if_exists(field_name, curr_path):
             err_command += "cat " + curr_path
     elif (field_name == "ibnetdiscover"):
         if (is_ib == 0 and no_ib_flag == False):
-            status, command_output = commands.getstatusoutput(ib_res)
+            status, command_output = get_status_output("timeout 10s " + ib_res)
             if (status == 0):
                 add_ext_file_handler("ibnetdiscover", "ibnetdiscover", command_output)
-                status, command_output = commands.getstatusoutput(ib_res + " -p")
+                status, command_output = get_status_output("timeout 10s " + ib_res + " -p")
                 if (status == 0):
                     add_ext_file_handler("ibnetdiscover -p", "ibnetdiscover_p", command_output)
                 else:
@@ -1441,34 +1542,34 @@ def add_external_file_if_exists(field_name, curr_path):
                 err_command += "\n\nNo 'ibnetdiscover_p' External File\nReason: Couldn't find command: which ibnetdiscover"
     elif (field_name == "Installed packages"):
         if (cur_os != "debian"):
-            status, unrelevant_res = commands.getstatusoutput("rpm -qva --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIZE}\n' | sort  > "+path+file_name+"/pkglist")
+            status, unrelevant_res = get_status_output("rpm -qva --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIZE}\n' | sort  > "+path+file_name+"/pkglist")
         else:
-            status, unrelevant_res = commands.getstatusoutput("dpkg --list > "+path+file_name+"/pkglist")
+            status, unrelevant_res = get_status_output("dpkg --list > "+path+file_name+"/pkglist")
         if (status == 0):
             add_ext_file_handler(field_name, "pkglist", "")
         else:
             err_flag = 1
             err_command += "No file " + path+file_name+"/pkglist"
     elif (field_name == "Performance tuning analyze"):
-        status, command_output = commands.getstatusoutput("cat " + html2_path)
+        status, command_output = get_status_output("timeout 10s cat " + html2_path)
         if (status == 0):
             add_ext_file_handler(field_name, "performance-tuning-analyze.html", command_output)
         else:
             err_flag = 1
             err_command += html2_path
     elif (field_name == "SR-IOV"):
-        status, command_output = commands.getstatusoutput("cat " + html3_path)
+        status, command_output = get_status_output("timeout 10s cat " + html3_path)
         if status == 0 :
             add_ext_file_handler(field_name, "sr-iov.html", command_output)
         else:
             err_flag = 1
             err_command += html3_path + "\nSince SR-IOV is not activated"
     elif ("mlnx_tune" in field_name):
-        status, command_output = commands.getstatusoutput("timeout 1m ./mlnx_tune -r")
+        status, command_output = get_status_output("timeout 1m ./mlnx_tune -r")
         if not (("No such file or directory" in command_output) or ((status != 0) and not ("Unsupported" in command_output))):
             add_ext_file_handler(field_name, curr_path, command_output)
         else:
-            status, command_output = commands.getstatusoutput("timeout 1m " + field_name)
+            status, command_output = get_status_output("timeout 1m " + field_name)
             if not (status == 0 or ("Unsupported" in command_output)):
                 err_flag = 1
                 err_command += field_name + " - tool is not installed, and there is no script mlnx_tune"
@@ -1476,7 +1577,7 @@ def add_external_file_if_exists(field_name, curr_path):
             else:
                 add_ext_file_handler(field_name, curr_path, command_output)
     else:    
-        status, command_output = commands.getstatusoutput(field_name)
+        status, command_output = get_status_output("timeout 10s " + field_name)
         if (status == 0):
             add_ext_file_handler(field_name, field_name, command_output)
         else:
@@ -1495,22 +1596,31 @@ def add_external_file_if_exists(field_name, curr_path):
 def arrange_numa_nodes():
     # numa_nodes
     other_system_files_dict['numa_nodes'] = "No numa_nodes or could not retrieve them"
-    if (cur_os != "debian"):
-        st, res = commands.getstatusoutput("for f in $(find /sys | grep numa_node |grep -v uevent |sort ); do if [[ -f $f ]]; then echo $f $(cat $f); fi; done")
-    else:
-        st, res = commands.getstatusoutput("exec 2>/dev/null; for f in $(find /sys | grep numa_node |grep -v uevent |sort ); do if ! [[ -d $f ]]; then echo $f $(cat $f); fi; done")
-    
+    if cur_os == "debian":
+        os.system("timeout 10s exec 2>/dev/null")
+    st, numas = get_status_output("timeout 10s find /sys | grep numa_node | grep -v uevent |sort")
+    if st != 0:
+        return
+    res = ""
+    for numa in numas.splitlines():
+        with open(numa, 'r') as numa_file:
+            res += numa + " " + numa_file.read().strip() + "\n"
     other_system_files_dict['numa_nodes'] = res
 
 def arrange_system_files():
     other_system_files_dict['System Files'] = "No System Files"
     if (no_ib_flag == False):
         if (cur_os != "debian"):
-            st, res = commands.getstatusoutput("NETDEVICES=$(LIST='' ; set -- `ls /sys/class/net`; while [ $# -ne 0 ];do [[ $1 == lo ]] && shift && continue; LIST+=' '; LIST+=$1 ;shift;done ; echo $LIST); for f in $(find /sys | grep infini |grep -v uevent |sort ) ${NETDEVICES}; do if [[ -f $f ]]; then echo File: $f: $(cat $f); fi; done")
+            st, res = get_status_output("NETDEVICES=$(LIST='' ; set -- `ls /sys/class/net`; while [ $# -ne 0 ];do [[ $1 == lo ]] && shift && continue; LIST+=' '; LIST+=$1 ;shift;done ; echo $LIST); for f in $(find /sys | grep infini |grep -v uevent |sort ) ${NETDEVICES}; do if [[ -f $f ]]; then echo File: $f: $(cat $f); fi; done 2>/dev/null")
         else:
-            st, res = commands.getstatusoutput("exec 2>/dev/null; NETDEVICES=$(LIST='' ; set -- `ls /sys/class/net`; while [ $# -ne 0 ];do [[ $1 == lo ]] && shift && continue; LIST+=' '; LIST+=$1 ;shift;done ; echo $LIST); for f in $(find /sys | grep infini |grep -v uevent |sort ) ${NETDEVICES}; do if ! [[ -d $f ]]; then echo File: $f: $(cat $f); fi; done")
+            st, res = get_status_output("exec 2>/dev/null; NETDEVICES=$(LIST='' ; set -- `ls /sys/class/net`; while [ $# -ne 0 ];do [[ $1 == lo ]] && shift && continue; LIST+=' '; LIST+=$1 ;shift;done ; echo $LIST); for f in $(find /sys | grep infini |grep -v uevent |sort ) ${NETDEVICES}; do if ! [[ -d $f ]]; then echo File: $f: $(cat $f); fi; done 2>/dev/null")
         
         if (st == 0 and res != ""):
+            lines = res.splitlines()
+            res = ""
+            for line in lines:
+                if not (line.startswith("File:") and line.endswith(":")):
+                    res += "\n" + line
             other_system_files_dict['System Files'] = res
 
 #----------------------------------------------------------
@@ -1648,19 +1758,34 @@ def arrange_internal_files_section():
     
     if os.path.exists("/sys/class/net/"):
         for indir in os.listdir("/sys/class/net/"):
-            if os.path.isfile("/sys/class/net/" + indir) == False and indir.startswith("ib"):
-                if os.path.isfile("/sys/class/net/" + indir + "/mode"):
-                    if verbose_count == 2:
-                        print("\t\t/sys/class/net/" + indir + "/mode - start")
-                    add_internal_file_if_exists("/sys/class/net/" + indir + "/mode")
-                    if verbose_count == 2:
-                        print("\t\t/sys/class/net/" + indir + "/mode - end")
-                if os.path.isfile("/sys/class/net/" + indir + "/pkey"):
-                    if verbose_count == 2:
-                        print("\t\t/sys/class/net/" + indir + "/pkey - start")
-                    add_internal_file_if_exists("/sys/class/net/" + indir + "/pkey")
-                    if verbose_count == 2:
-                        print("\t\t/sys/class/net/" + indir + "/pkey - end")
+            if os.path.isfile("/sys/class/net/" + indir) == False:
+                if indir.startswith("ib"):
+                    if os.path.isfile("/sys/class/net/" + indir + "/mode"):
+                        if verbose_count == 2:
+                            print("\t\t/sys/class/net/" + indir + "/mode - start")
+                        add_internal_file_if_exists("/sys/class/net/" + indir + "/mode")
+                        if verbose_count == 2:
+                            print("\t\t/sys/class/net/" + indir + "/mode - end")
+                    if os.path.isfile("/sys/class/net/" + indir + "/pkey"):
+                        if verbose_count == 2:
+                            print("\t\t/sys/class/net/" + indir + "/pkey - start")
+                        add_internal_file_if_exists("/sys/class/net/" + indir + "/pkey")
+                        if verbose_count == 2:
+                            print("\t\t/sys/class/net/" + indir + "/pkey - end")
+                    if os.path.isfile("/sys/class/net/" + indir  + "/queues/rx-0/rps_cpus"):
+                        if verbose_count == 2:
+                            print("\t\t/sys/class/net/" + indir + "/queues/rx-0/rps_cpus - start")
+                        add_internal_file_if_exists("/sys/class/net/" + indir + "/queues/rx-0/rps_cpus")
+                        if verbose_count == 2:
+                            print("\t\t/sys/class/net/" + indir + "/queues/rx-0/rps_cpus - end")  
+                options = ["cnp_802p_prio", "0", "1", "2", "3", "4", "5", "6", "7"]
+                for option in options:
+                    if os.path.isfile("/sys/class/net/" + indir + "/ecn/roce_np/" + option):
+                        if verbose_count == 2:
+                            print("\t\t/sys/class/net/" + indir + "/ecn/roce_np/" + option + " - start")
+                        add_internal_file_if_exists("/sys/class/net/" + indir + "/ecn/roce_np/" + option)
+                        if verbose_count == 2:
+                            print("\t\t/sys/class/net/" + indir + "/ecn/roce_np/" + option + " - end")
 
     if verbose_flag:
         print("\tGenerating internal files section has ended")
@@ -1733,7 +1858,7 @@ def ip_link_show_devices_handler():
     res = ""
     first = True
     for pf_device in pf_devices:
-        st, ip_link_device = commands.getstatusoutput("ip link show dev " + pf_device)
+        st, ip_link_device = get_status_output("timeout 10s ip link show dev " + pf_device)
         if not first:
             res += "\n\n------------------------------------------------------------\n\n"
             first = False
@@ -1744,7 +1869,7 @@ def ip_link_show_devices_handler():
     return res
 
 def lspci_vf_handler():
-    st, lspci = commands.getstatusoutput("lspci -tv -d 15b3:")
+    st, lspci = get_status_output("timeout 10s lspci -tv -d 15b3:")
     if st != 0:
         return st, "Could not run: lspci -tv -d 15b3:"
     
@@ -1776,7 +1901,7 @@ def add_sriov_command_if_exists(command):
             print_err_flag = 1
     else:
         # invoking regular command
-        status, result = commands.getstatusoutput(command)
+        status, result = get_status_output("timeout 10s " + command)
         if status != 0:
             result = "Could not run: " + '"' + command + '"'
     
@@ -1794,7 +1919,7 @@ def add_sriov_command_if_exists(command):
 
 def add_sriov_internal_file_if_exists(file_full_path):
     # put provided file textual content in result
-    status, result = commands.getstatusoutput("cat " + file_full_path)
+    status, result = get_status_output("timeout 10s cat " + file_full_path)
     
     # add internal file to files dictionary only if exists
     if (status == 0):
@@ -1951,8 +2076,9 @@ def arrange_sriov_dicts():
 ###############  Out File Name Handlers ###################
 
 def get_json_file_name():
-    curr_hostname = invoke_command(['hostname']).replace('\n', '-')
-    json_file_name = "sysinfo-snapshot-v" + version + "-" + curr_hostname + date_file
+    hst, curr_hostname = get_status_output("hostname")
+    #curr_hostname = invoke_command(['hostname']).replace('\n', '-')
+    json_file_name = "sysinfo-snapshot-v" + version + "-" + curr_hostname.replace('\n', '-') + date_file
     return json_file_name
 
 file_name = get_json_file_name()
@@ -1984,6 +2110,10 @@ def print_destination_out_file():
                 print("firmware \t\t\t- contains all firmware files (mst dump files and flint output)")
             elif (fi == "ibdiagnet"):
                 print("ibdiagnet \t\t\t- contains all files generated from invoking ibdiagnet")
+            elif (fi == "etc_udev_rulesd"):
+                print("etc_udev_rulesd \t\t- contains all files under /etc/udev/rules.d")
+            elif (fi == "lib_udev_rulesd"):
+                print("lib_udev_rulesd \t\t- contains all files under /lib/udev/rules.d")
             else:
                 print(fi)
 
@@ -2003,6 +2133,7 @@ def show_usage():
       + "\n\t--ibdiagnet \t\t- add ibdiagnet command to the output."
       + "\n\t--no_ib \t\t- do not add server IB commands to the output."
       + "\n\t--json \t\t\t- add json file to the output."
+      + "\n\t--pcie \t\t\t- add pcie commands/functions to the output."
       + "\n\t--verbose\t\t- first verbosity level, available if option is provided only once, lists sections in process."
       + "\n\t\t\t\t  second verbosity level, available if option is provided twice, lists sections and commands in process.")
 
@@ -2012,16 +2143,19 @@ def show_usage():
 # Remove all unwanted side effect files and folders
 def remove_unwanted_files():
     # Remove mstflint_lockfiles directory
-    invoke_command(['rm', '-rf', "/tmp/mstflint_lockfiles"])
+    get_status_output("rm -rf /tmp/mstflint_lockfiles")
+    #invoke_command(['rm', '-rf', "/tmp/mstflint_lockfiles"])
     
     # Remove untared directory out file
-    invoke_command(['rm', '-rf', path+file_name])
+    get_status_output("rm -rf " + path + file_name)
+    #invoke_command(['rm', '-rf', path+file_name])
 
     # Remove all unwanted side effect files
     if (os.path.exists(path) == True):
         for file in os.listdir(path):
             if (file.startswith("tmp.") or file.startswith("hsqldb.")):
-                invoke_command(['rm', '-rf', path+file])
+                get_status_output("rm -rf " + path + file)
+                #invoke_command(['rm', '-rf', path+file])
 
 def validate_not_file():
     # validate the path is not file elsewise print proper message and exit
@@ -2054,7 +2188,8 @@ def ensure_out_dir_existence():
     global path_is_generated
     if (os.path.exists(path) == False):
         validate_path()
-        invoke_command(['mkdir', '-p', path])
+        get_status_output("mkdir -p " + path)
+        #invoke_command(['mkdir', '-p', path])
         path_is_generated = 1
 
 ###########################################################
@@ -2063,7 +2198,7 @@ def ensure_out_dir_existence():
 #it is recommended to have irqbalance off
 def irqbalance():
     key = "IRQ Affinity"
-    st, irqbalance = commands.getstatusoutput("service irqbalance status")
+    st, irqbalance = get_status_output("timeout 10s service irqbalance status")
     if (st == 0):
         if ("running" in irqbalance):
             perf_status_dict[key] = "Warning"
@@ -2078,11 +2213,10 @@ def irqbalance():
 
 def core_frequency():
     key = "Core Frequency"
-    st, cpuinfo = commands.getstatusoutput("cat /proc/cpuinfo")
+    st, cpuinfo = get_status_output("timeout 10s cat /proc/cpuinfo")
     if (st != 0):
         perf_val_dict[key] = "command not found: 'cat /proc/cpuinfo'"
         return
-    
     perf_status_dict[key] = "OK"
     perf_val_dict[key] = "CPU is set to max performance"
     
@@ -2111,24 +2245,24 @@ def core_frequency():
 def hyper_threading():
     key = "Hyper Threading"
     
-    st, siblings = commands.getstatusoutput("cat /proc/cpuinfo | grep " + '"' + "siblings" + '"')
+    st, siblings = get_status_output("timeout 10s cat /proc/cpuinfo | grep " + '"' + "siblings" + '"')
     if (st != 0):
-        st, siblings_lines_num = commands.getstatusoutput("cat /proc/cpuinfo | grep " + '"' + "siblings" + '"' + " | wc -l")
+        st, siblings_lines_num = get_status_output("timeout 10s cat /proc/cpuinfo | grep " + '"' + "siblings" + '"' + " | wc -l")
         if (st == 0 and represents_int(siblings_lines_num) and int(siblings_lines_num)==0):
             siblings = ""
         else:
             perf_val_dict[key] = "command not found: cat /proc/cpuinfo | grep " + '"' + "siblings" + '"'
             return
     
-    st, cpu_cores = commands.getstatusoutput("cat /proc/cpuinfo | grep " + '"' + "cpu cores" + '"')
+    st, cpu_cores = get_status_output("timeout 10s cat /proc/cpuinfo | grep " + '"' + "cpu cores" + '"')
     if (st != 0):
-        st, cpu_cores_lines_num = commands.getstatusoutput("cat /proc/cpuinfo | grep " + '"' + "cpu cores" + '"' + " | wc -l")
+        st, cpu_cores_lines_num = get_status_output("timeout 10s cat /proc/cpuinfo | grep " + '"' + "cpu cores" + '"' + " | wc -l")
         if (st == 0 and represents_int(cpu_cores_lines_num) and int(cpu_cores_lines_num)==0):
             cpu_cores = ""
         else:
             perf_val_dict[key] = "command not found: cat /proc/cpuinfo | grep " + '"' + "cpu cores" + '"'
             return
-    
+   
     siblings = siblings.splitlines()
     sib_count = 0
     for line in siblings:
@@ -2161,7 +2295,7 @@ ip_forwarding_val["IPv6"] = not_available
 def ipv_forwarding(key, path):
     global ip_forwarding_status
     global ip_forwarding_val
-    st, ipv = commands.getstatusoutput("cat " + path)
+    st, ipv = get_status_output("timeout 10s cat " + path)
     if (st != 0 or ("No such file or directory" in ipv)):
         ip_forwarding_val[key] = "command not found: cat " + path
         return
@@ -2194,7 +2328,7 @@ def lspci():
     global direct
     key = "PCI Configurations"
     
-    st, cards_num = commands.getstatusoutput("lspci -d 15b3: | wc -l")
+    st, cards_num = get_status_output("timeout 10s lspci -d 15b3: | wc -l")
     if (st != 0 or ("command not found" in cards_num) or represents_int(cards_num) == False):
         perf_status_dict[key]    = "OK"
         perf_val_dict[key]    = "bash: lspci: command not found"
@@ -2206,7 +2340,7 @@ def lspci():
         direct = True
         return
     
-    st, mlnx_cards = commands.getstatusoutput("lspci -d 15b3:")
+    st, mlnx_cards = get_status_output("timeout 10s lspci -d 15b3:")
     if (st != 0 or ("command not found" in mlnx_cards)):
         perf_val_dict[key] = "command not found: lspci -d 15b3:"
         direct = True
@@ -2245,18 +2379,18 @@ def lspci():
             pci_devices[i]["desired_width"] = 16.0
     
     if (no_ib_flag == False):
-        st, firmwares = commands.getstatusoutput("for i in `lspci -d 15b3: | awk '{print $1}'`; do mstflint -d $i q; done | grep " + '"' + "FW Version" + '"')
+        st, firmwares = get_status_output("for i in `lspci -d 15b3: | awk '{print $1}'`; do mstflint -d $i q; done | grep " + '"' + "FW Version" + '"')
         if (st == 0):
             firmwares = firmwares.splitlines()
             if (len(mlnx_cards) == len(firmwares)):
                 pci_devices[i]["current_fw"] = (firmwares[i]).split()[-1]
-        st, psids = commands.getstatusoutput("for i in `lspci -d 15b3: | awk '{print $1}'`; do mstflint -d $i q; done | grep PSID")
+        st, psids = get_status_output("for i in `lspci -d 15b3: | awk '{print $1}'`; do mstflint -d $i q; done | grep PSID")
         if (st == 0):
             psids = psids.splitlines()
             if (len(mlnx_cards) == len(psids)):
                 pci_devices[i]["psid"] = (psids[i]).split()[-1]
     
-    st, cards_xxx = commands.getstatusoutput("lspci -d 15b3: -xxx | grep ^70")
+    st, cards_xxx = get_status_output("timeout 10s lspci -d 15b3: -xxx | grep ^70")
     if (st != 0):
         perf_val_dict[key] = "command not found: lspci -d 15b3: -xxx | grep ^70"
         direct = True
@@ -2277,7 +2411,7 @@ def lspci():
                 pci_devices[i]["current_gen"] = -1.0
         else:
             pci_devices[i]["current_gen"] = -1.0
-    st, cards_speed_width = commands.getstatusoutput("lspci -d 15b3: -vvv | grep -i Speed")
+    st, cards_speed_width = get_status_output("timeout 10s lspci -d 15b3: -vvv | grep -i Speed")
     if (st != 0):
         perf_val_dict[key] = "command not found: lspci -d 15b3: -vvv | grep -i Speed"
         direct = True
@@ -2299,7 +2433,7 @@ def lspci():
                     pci_devices[i]["current_width"] = -1.0
             else:
                 pci_devices[i]["current_width"] = -1.0
-    st, cards_payload_read = commands.getstatusoutput("lspci -d 15b3: -vvv | grep -i MaxReadReq")
+    st, cards_payload_read = get_status_output("timeout 10s lspci -d 15b3: -vvv | grep -i MaxReadReq")
     if (st != 0):
         perf_val_dict[key] = "command not found: lspci -d 15b3: -vvv | grep -i MaxReadReq"
         direct = True
@@ -2343,7 +2477,7 @@ def lspci():
 
 def amd():
     key = "AMD"
-    st, manufacturer = commands.getstatusoutput("dmidecode -s processor-manufacturer")
+    st, manufacturer = get_status_output("timeout 10s dmidecode -s processor-manufacturer")
     if (st != 0):
         perf_val_dict[key] = "command not found: dmidecode -s processor-manufacturer"
         return
@@ -2361,12 +2495,12 @@ def memlock():
     key = "Memory Allocation"
     global perf_status_dict
     global perf_val_dict
-    st, count = commands.getstatusoutput("cat /etc/security/limits.conf | grep memlock | wc -l")
+    st, count = get_status_output("timeout 10s cat /etc/security/limits.conf | grep memlock | wc -l")
     if (st != 0 or ("command not found" in count) or (count == "") or (count == "0")):
         perf_status_dict[key] = not_present
         perf_val_dict[key] = ""
     else:
-        st, memlock = commands.getstatusoutput("cat /etc/security/limits.conf | grep memlock")
+        st, memlock = get_status_output("timeout 10s cat /etc/security/limits.conf | grep memlock")
         if (st != 0):
             perf_status_dict[key] = not_present
             perf_val_dict[key] = ""
@@ -2382,7 +2516,7 @@ latency = {}
 def bw_and_lat():
     global bandwidth
     global latency
-    st, devices = commands.getstatusoutput("ls /sys/class/infiniband")
+    st, devices = get_status_output("timeout 10s ls /sys/class/infiniband")
     if (st != 0 or ("No such file or directory" in devices)):
         try:
             perf_setting_collection.remove("Bandwidth")
@@ -2392,10 +2526,36 @@ def bw_and_lat():
         return
     
     devices = devices.split()
+    if len(devices) <= 0:
+        return
+    st, show_gids = get_status_output("timeout 10s show_gids | sort -k5,6 --numeric-sort")
+    if st != 0:
+       show_gids = ""
     for device in devices:
         bandwidth[device] = ""
-        st, bandwidth[device] = commands.getstatusoutput("timeout 10s ib_write_bw --report_gbits -d " + device + " >/dev/null & timeout 10s ib_write_bw --report_gbits -d " + device + " localhost")
-        st, latency[device] = commands.getstatusoutput("timeout 10s ib_write_lat -d " + device + " >/dev/null & timeout 10s ib_write_lat -d " + device + " localhost")
+        cmd = "timeout 10s ib_write_bw --report_gbits -d " + device + " >/dev/null & sleep 2; timeout 10s ib_write_bw --report_gbits -d " + device + " localhost"
+        st, bandwidth[device] = getstatusoutput(cmd)
+        bandwidth[device] = cmd + "\n\n" + bandwidth[device]
+        cmd = "timeout 10s ib_write_lat -d " + device + " >/dev/null & sleep 2; timeout 10s ib_write_lat -d " + device + " localhost"
+        st, latency[device] = getstatusoutput(cmd)
+        latency[device] = cmd + "\n\n" + latency[device]
+        if device in show_gids:
+            try:
+                data = show_gids.split(device)[-1].splitlines()[0].strip().split()
+                if len(data)>5:
+                    index = data[1]
+                    bandwidth[device] += "\n\n##################################################\n\n"
+                    cmd = "timeout 10s ib_write_bw -d " + device + " -x" + index + " >/dev/null & sleep 2; timeout 10s ib_write_bw -d " + device + " -x" + index + " localhost"
+                    bandwidth[device] += cmd + "\n\n"
+                    st, bandwidth_x = getstatusoutput(cmd)
+                    bandwidth[device] += bandwidth_x
+                    latency[device] += "\n\n##################################################\n\n"
+                    cmd = "timeout 10s ib_write_lat -d " + device + " -x" + index + " >/dev/null & sleep 2; timeout 10s ib_write_lat -d " + device + " -x" + index + " localhost" 
+                    latency[device] += cmd + "\n\n"
+                    st, latency_x = getstatusoutput(cmd)
+                    latency[device] += latency_x
+            except:
+                pass
 
 #==========================================================
 
@@ -2488,7 +2648,7 @@ def initialize_html(html_flag):
     else:
         html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: Firmware commands are included. (One of -fw or --firmware flags was provided)</font></p>")
     
-    if mtusb_flag:    
+    if mtusb_flag: 
         html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: I2C firmware commands are included. (--mtusb flag was provided)</font></p>")
     else:
         html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: I2C firmware commands are NOT included. (--mtusb flag was not provided)</font></p>")
@@ -2511,14 +2671,18 @@ def initialize_html(html_flag):
     elif (mlnx_cards_status == 0):
         html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: There are no Mellanox cards. </font></p>")
     
+    if pcie_flag:
+        html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: pcie commands are included. (--pcie flag was provided)</font></p>")
+    else:
+        html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: pcie commands are NOT included. (--pcie flag was not provided)</font></p>")
     html.close()
 
 def html_write_section(html, title, collection, base):
     html.write("<h2>" + title + "</h2>")
     html.write("<table cols="+'"'+"4"+'"'+" width=" + '"' + "100%" + '"' + " border=" + '"' + "0" + '"' + " bgcolor="+'"'+"#E0E0FF"+'"'+">")
     html.write("<tr>")
-    
-    rows = len(collection)/4
+
+    rows = len(collection)//4
     mod_val = len(collection) % 4
     
     c=0
@@ -2605,14 +2769,14 @@ def html_write_paragraph(html, base, collection, dict, prev_parag_end):
                         ethtool_content_final += line + "\n"
                 html.write(ethtool_content_final)
             else:
-                for key, value in server_commands_dict[collection[i]].iteritems():
+                for key, value in server_commands_dict[collection[i]].items():
                     html.write(value)
-                    html.write("&nbsp&nbsp&nbsp&nbsp")
+                    html.write("&nbsp;&nbsp;&nbsp;&nbsp;")
             html.write("</p>")
         else:
-            replaced_command_output = dict[collection[i]].replace('<', "&lt;").replace('>', "&gt;")
-            html.write("<p>" + replaced_command_output + "</p>")
-        
+            replaced_command_output = dict[collection[i]].replace('\t', "&nbsp;&nbsp;&nbsp;&nbsp;").replace('<', "&lt;").replace('>', "&gt;").replace('\n', '<br/>')
+            # replace all non-ascii charachters with ""
+            html.write("<p>" + re.sub(r'[^\x00-\x7F]+',' ', replaced_command_output) + "</p>")
         sec=sec+1
     
     html.write("</p>")
@@ -2657,8 +2821,8 @@ def build_and_finalize_html():
         html.write("<h2>3. External Files:</h2>")
     html.write("<table cols="+'"'+"4"+'"'+" width=" + '"' + "100%" + '"' + " border=" + '"' + "0" + '"' + " bgcolor="+'"'+"#E0E0FF"+'"'+">")
     html.write("<tr>")
-    
-    rows = len(available_external_files_collection)/6
+
+    rows = len(available_external_files_collection)//6
     mod_val = len(available_external_files_collection) % 6
     
     c=0
@@ -2807,76 +2971,76 @@ def html2_write_lspci(html2):
         html2.write("<br/><br/>")
         
         #print pci device name
-        html2.write("&nbsp&nbsp&nbsp&nbspPCI Device Name: " + pci_devices[i]["name"].replace('<', "&lt;").replace('>', "&gt;"))
+        html2.write("&nbsp;&nbsp;&nbsp;&nbsp;PCI Device Name: " + pci_devices[i]["name"].replace('<', "&lt;").replace('>', "&gt;"))
         html2.write("<br/>")
         
         #print device status:
         if (pci_devices[i]["status"] == "OK"):
-            html2.write("&nbsp&nbsp&nbsp&nbspStatus: <font color=" +'"'+"green"+'"'+">OK</font>")
+            html2.write("&nbsp;&nbsp;&nbsp;&nbsp;Status: <font color=" +'"'+"green"+'"'+">OK</font>")
         else:
-            html2.write("&nbsp&nbsp&nbsp&nbspStatus: <font color=" +'"'+"orange"+'"'+">" + pci_devices[i]["status"] + "</font>")
+            html2.write("&nbsp;&nbsp;&nbsp;&nbsp;Status: <font color=" +'"'+"orange"+'"'+">" + pci_devices[i]["status"] + "</font>")
         html2.write("<br/>")
        
         #print current hca firmware version
         if (pci_devices[i]["current_fw"] != ""):
-            html2.write("&nbsp&nbsp&nbsp&nbspCurrent Firmware Version: " + pci_devices[i]["current_fw"])
+            html2.write("&nbsp;&nbsp;&nbsp;&nbsp;Current Firmware Version: " + pci_devices[i]["current_fw"])
             html2.write("<br/>")
         
         #print hca psid
         if (pci_devices[i]["psid"] != ""):
-            html2.write("&nbsp&nbsp&nbsp&nbspPSID: " + pci_devices[i]["psid"])
+            html2.write("&nbsp;&nbsp;&nbsp;&nbsp;PSID: " + pci_devices[i]["psid"])
             html2.write("<br/>")
         
         #print desired gen
         if (pci_devices[i]["desired_gen"] != not_available):
-            html2.write("&nbsp&nbsp&nbsp&nbspDesired PCIe Generation: " + str(int(pci_devices[i]["desired_gen"])))
+            html2.write("&nbsp;&nbsp;&nbsp;&nbsp;Desired PCIe Generation: " + str(int(pci_devices[i]["desired_gen"])))
             html2.write("<br/>")
         
         #print current gen
         if (pci_devices[i]["current_gen"] != not_available):
-            html2.write("&nbsp&nbsp&nbsp&nbspCurrent PCIe Generation: " + str(int(pci_devices[i]["current_gen"])))
+            html2.write("&nbsp;&nbsp;&nbsp;&nbsp;Current PCIe Generation: " + str(int(pci_devices[i]["current_gen"])))
             html2.write("<br/>")
         
         #print desired speed
-        html2.write("&nbsp&nbsp&nbsp&nbspDesired Speed: " + str(pci_devices[i]["desired_speed"]))
+        html2.write("&nbsp;&nbsp;&nbsp;&nbsp;Desired Speed: " + str(pci_devices[i]["desired_speed"]))
         html2.write("<br/>")
         
         #print current speed
-        html2.write("&nbsp&nbsp&nbsp&nbspCurrent Speed: " + str(pci_devices[i]["current_speed"]))
+        html2.write("&nbsp;&nbsp;&nbsp;&nbsp;Current Speed: " + str(pci_devices[i]["current_speed"]))
         html2.write("<br/>")
         
         #print desired width
-        html2.write("&nbsp&nbsp&nbsp&nbspDesired Width: x" + str(pci_devices[i]["desired_width"]))
+        html2.write("&nbsp;&nbsp;&nbsp;&nbsp;Desired Width: x" + str(pci_devices[i]["desired_width"]))
         html2.write("<br/>")
         
         #print current width
-        html2.write("&nbsp&nbsp&nbsp&nbspCurrent Width: x" + str(pci_devices[i]["current_width"]))
+        html2.write("&nbsp;&nbsp;&nbsp;&nbsp;Current Width: x" + str(pci_devices[i]["current_width"]))
         html2.write("<br/>")
         
         #print desired payload size
-        html2.write("&nbsp&nbsp&nbsp&nbspDesired Payload Size: " + str(pci_devices[i]["desired_payload_size"]))
+        html2.write("&nbsp;&nbsp;&nbsp;&nbsp;Desired Payload Size: " + str(pci_devices[i]["desired_payload_size"]))
         html2.write("<br/>")
         
         #print current payload size
-        html2.write("&nbsp&nbsp&nbsp&nbspCurrent Payload Size: " + str(pci_devices[i]["current_payload_size"]))
+        html2.write("&nbsp;&nbsp;&nbsp;&nbsp;Current Payload Size: " + str(pci_devices[i]["current_payload_size"]))
         html2.write("<br/>")
         
         #print desired max read request
-        html2.write("&nbsp&nbsp&nbsp&nbspDesired Max Read Request: " + str(pci_devices[i]["desired_max_read_request"]))
+        html2.write("&nbsp;&nbsp;&nbsp;&nbsp;Desired Max Read Request: " + str(pci_devices[i]["desired_max_read_request"]))
         html2.write("<br/>")
         
         #print current max read request
-        html2.write("&nbsp&nbsp&nbsp&nbspCurrent Max Read Request: " + str(pci_devices[i]["current_max_read_request"]))
+        html2.write("&nbsp;&nbsp;&nbsp;&nbsp;Current Max Read Request: " + str(pci_devices[i]["current_max_read_request"]))
         html2.write("<br/>")
         
         if ((i+1) != len(pci_devices)):
-            html2.write("<br/>&nbsp&nbsp&nbsp&nbsp--------------------------------------------------")
+            html2.write("<br/>&nbsp;&nbsp;&nbsp;&nbsp;--------------------------------------------------")
 
 #----------------------------------------------------------
 
 def html2_write_bw(html2):
     i = 0
-    for device, val in bandwidth.iteritems():
+    for device, val in bandwidth.items():
         i += 1
         if (i > 1):
             html2.write("<br/>")
@@ -2886,7 +3050,7 @@ def html2_write_bw(html2):
 
 def html2_write_lat(html2):
     i = 0
-    for device, val in latency.iteritems():
+    for device, val in latency.items():
         i += 1
         if (i>1):
             html2.write("<br/>")
@@ -2981,7 +3145,7 @@ def build_and_finalize_html2():
         html2.write("<table cols="+'"'+"4"+'"'+" width=" + '"' + "100%" + '"' + " border=" + '"' + "0" + '"' + " bgcolor="+'"'+"#E0E0FF"+'"'+">")
         html2.write("<tr>")
         
-        rows = len(perf_external_files_collection)/6
+        rows = len(perf_external_files_collection)//6
         mod_val = len(perf_external_files_collection) % 6
         
         c=0
@@ -3103,9 +3267,9 @@ def build_and_finalize_html3():
 def confirm_mlnx_cards():
     global mlnx_cards_status
     global sriov_exists
-    st, mlnx_cards = commands.getstatusoutput("lspci -d 15b3:")
+    st, mlnx_cards = get_status_output("timeout 10s lspci -d 15b3:")
     if (st != 0 or ("command not found" in mlnx_cards)):
-        st, mlnx_cards = commands.getstatusoutput("ls /sys/class/infiniband")
+        st, mlnx_cards = get_status_output("timeout 10s ls /sys/class/infiniband")
         if (st == 0 and ("No such file or directory" not in mlnx_cards)):
             mlnx_cards = mlnx_cards.split()
             mlnx_cards_status = len(mlnx_cards)
@@ -3137,7 +3301,7 @@ def create_empty_log_files():
 def load_modules():
     global driver_required_loading
     global is_MFT_installed
-    st, mst_start = commands.getstatusoutput('mst start')
+    st, mst_start = get_status_output('mst start')
     if st != 0:
         print ('MFT is not installed, it is prefered to install MFT and try again.')
         is_MFT_installed = False
@@ -3156,11 +3320,15 @@ def generate_output():
     
     # Create output directories
     ensure_out_dir_existence()
-    invoke_command(['mkdir', path + file_name])
-    invoke_command(['mkdir', path + file_name + "/tmp"])
-    invoke_command(['mkdir', path + file_name + "/err_messages"])
+    get_status_output("mkdir " + path + file_name)
+    #invoke_command(['mkdir', path + file_name])
+    get_status_output("mkdir " + path + file_name + "/tmp")
+    #invoke_command(['mkdir', path + file_name + "/tmp"])
+    get_status_output("mkdir " + path + file_name + "/err_messages")
+    #invoke_command(['mkdir', path + file_name + "/err_messages"])
     #if fw_flag:
-    invoke_command(['mkdir', path + file_name + "/firmware"])
+    get_status_output("mkdir " + path + file_name + "/firmware")
+    #invoke_command(['mkdir', path + file_name + "/firmware"])
     
     # Create empty log files
     create_empty_log_files()
@@ -3204,9 +3372,12 @@ def generate_output():
         print("\tGenerating JSON file has started")
     if (json_flag == True and json_found == True):
         json_content = json.dumps(l1_dict, sort_keys=True)
-        json_file = open(path + file_name + "/" + file_name + ".json", 'w')
-        print >> json_file, json_content
-        json_file.close()
+        with open(path + file_name + "/" + file_name + ".json", 'w') as json_file:
+            json_file.write(json_content)
+        #print >> json_file, json_content
+        #json_file = open(path + file_name + "/" + file_name + ".json", 'w')
+        #print >> json_file, json_content
+        #json_file.close()
     elif (json_flag == True):
         if verbose_flag:
             print("\t'json' module is not found in python, please install the module or remove the flag --json and try again.")
@@ -3223,7 +3394,8 @@ def generate_output():
         print("Generating sysinfo-snapshot HTML page has ended\n")
     
     # Remove helping directories before creating tar
-    invoke_command(['rm', '-rf', path + file_name + "/tmp"])
+    get_status_output("rm -rf " + path + file_name + "/tmp")
+    #invoke_command(['rm', '-rf', path + file_name + "/tmp"])
 
     if verbose_flag:
         print("Reverting modules loading state to the initial state")
@@ -3267,7 +3439,8 @@ def update_flags():
     global ibdiagnet_flag
     global mtusb_flag
     global perf_flag
-    
+    global pcie_flag   
+ 
     fw_arg = ''
     perf_arg = ''
     i = 1
@@ -3277,6 +3450,7 @@ def update_flags():
     z = 1
     w = 1
     m = 1
+    f = 1
     index = 0
     for arg in sys.argv:
         if (arg == '-fw' or arg == '--firmware'):
@@ -3288,6 +3462,10 @@ def update_flags():
             confirm_valid_options(index)
             no_ib_flag = True
             j += 1
+        if (arg == '--pcie'):
+            confirm_valid_options(index)
+            pcie_flag = True
+            f += 1
         if (arg == '--json'):
             confirm_valid_options(index)
             json_flag = True
@@ -3332,7 +3510,7 @@ def update_flags():
             perf_flag = True
             perf_arg = arg
             m += 1
-        if (i>2 or j>2 or k>2 or l>3 or z>2 or w>2 or m>2):
+        if (i>2 or j>2 or k>2 or l>3 or z>2 or w>2 or m>2 or f>2):
             print('Invalid options. The same option was provided more than the allowed times')
             show_usage()
             sys.exit(1)
@@ -3346,6 +3524,12 @@ def execute():
     if fw_flag:
         try:
             sys_argv.remove(fw_arg)
+            len_argv -= 1
+        except:
+            pass
+    if pcie_flag:
+        try:
+            sys_argv.remove("--pcie")
             len_argv -= 1
         except:
             pass
@@ -3405,11 +3589,11 @@ def execute():
         show_usage()
 
 def confirm_root():
-    st, user = commands.getstatusoutput('/usr/bin/whoami')
+    st, user = get_status_output('timeout 10s /usr/bin/whoami')
     if (st != 0):
         print('Unable to distinguish user')
         sys.exit(1)
-    if (user != 'root'):
+    if (user.strip() != 'root'):
         print('Runing as a none root user\nPlease switch to root user (super user) and run again.\n')
         show_usage()
         sys.exit(1)
