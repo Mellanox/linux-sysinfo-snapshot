@@ -4,6 +4,7 @@
 # Author:  Nizar Swidan  nizars@mellanox.com -- Created: 2015
 __author__ = 'nizars'
 
+
 import subprocess
 import sys
 import re
@@ -84,6 +85,7 @@ len_argv = len(sys.argv)
 driver_required_loading = False
 is_MFT_installed = False
 
+all_sm_on_fabric = []
 #active_subnets --> device_name
 #               --> port
 active_subnets = {}
@@ -147,6 +149,7 @@ def get_ibswitches_output(card, port):
 def get_installed_cards_ports():
     global active_subnets
     global installed_cards_ports
+    global all_sm_on_fabric
     st, ibstat = get_status_output("timeout 10s ibstat | grep " + '"' + "CA '\|Port " + '"' + " | grep -v GUID")
     if st != 0:
         return "Could not run: ibstat"
@@ -479,6 +482,7 @@ def eth_tool_all_interfaces_handler():
     if (len(net_devices) > 0):
         get_status_output("mkdir " + path + file_name + "/ethtool_S")
         #invoke_command(['mkdir', path + file_name + "/ethtool_S"])
+    
     first = True
     res = ""
     options = ["", "-i", "-g", "-a", "-k", "-c", "-T", "--show-priv-flags", "-n", "-l", "-x"]
@@ -1381,6 +1385,7 @@ def sm_status_handler(card, port):
     SmActivity_1=0
     NoSM=2 
     res = ""
+    
     for lo in range(0,4): 
         get_status_output("timeout 10s sleep 3")
         st, SmActivity = get_status_output("timeout 10s sminfo -C " + card +" -P " + port + " |awk '{ print $10 }'")
@@ -1419,6 +1424,7 @@ def sm_version_handler():
 
 def ibdiagnet_handler(card, port):
     global ibdiagnet_res
+    suffix = "_" + card + "_" + port
     if (ibdiagnet_is_invoked == False):
         if (os.path.exists(path+file_name+"/ibdiagnet") == False):
             os.mkdir(path+file_name+"/ibdiagnet")
@@ -1447,8 +1453,36 @@ def add_fabric_command_if_exists(command):
         result = ib_mc_info_show_handler()
     elif (command == "perfquery_cards_ports"):
         result = perfquery_cards_ports_handler()
+    elif (command == "ib_find_bad_ports"):
+        result = ib_find_bad_ports_handler()
+    elif (command == "ib_find_disabled_ports"):
+        result = ib_find_disabled_ports_handler()
+    elif (command == "ib_mc_info_show"):
+        result = ib_mc_info_show_handler()
+    elif (command == "ib_switches_FW_scan"):
+        result = ib_switches_FW_scan_handler()
+    elif (command == "ib_topology_viewer"):
+        result = ib_topology_viewer_handler()
+    elif (command == "sm_master_is"):
+        result = sm_master_is_handler()
+    elif (command == "sm_status"):
+        result = sm_status_handler()
     elif (command == "sm_version"):
         result = sm_version_handler()
+    elif (command == "ibdiagnet"):
+        if ibdiagnet_flag == False:
+            return
+        if (ibdiagnet_is_invoked == False):
+            ibdiagnet_handler()
+            ibdiagnet_is_invoked = True
+        result = ibdiagnet_res
+    elif command == "ibswitches":
+        if ibswitches_st != 0:
+            result = "Couldn't find command: ibswitches"
+        elif ibswitches == "":
+            result = "There are no ibswitches"
+        else:
+            result = ibswitches
     else:
         # invoking regular command
         status, result = get_status_output("timeout 10s " + command)
@@ -1464,9 +1498,11 @@ def add_fabric_multi_sub_command_if_exists(command):
     global available_fabric_commands_collection
 
     result = ""
+    index = 0
     #multi subnets commands:
     for card in active_subnets:
         for port_obj in active_subnets[card]:
+            index += 1
             port = port_obj["port_num"]
             suffix = " for the subnet running though card " + card +" port " + port
             result +=  command + suffix + "\n\n"
@@ -1480,7 +1516,8 @@ def add_fabric_multi_sub_command_if_exists(command):
             elif (command == "ib_find_disabled_ports"):
                 result += ib_find_disabled_ports_handler(card, port)
             elif (command == "ib_switches_FW_scan"):
-                result += ib_switches_FW_scan_handler(port_obj["ibswitches"]["ibswitches_st"], port_obj["ibswitches"]["ibswitches_output"])
+                ibdiagnet_suffix = "_" + card +"_" + port
+                result += ib_switches_FW_scan_handler(port_obj["ibswitches"]["ibswitches_st"], port_obj["ibswitches"]["ibswitches_output"], ibdiagnet_suffix)
             elif (command == "ib_topology_viewer"):
                 result += ib_topology_viewer_handler(card, port)
             elif (command == "sm_master_is"):
@@ -1490,8 +1527,10 @@ def add_fabric_multi_sub_command_if_exists(command):
                     return
                 if (ibdiagnet_is_invoked == False):
                     ibdiagnet_handler(card, port)
-                    ibdiagnet_is_invoked = True
-                result += ibdiagnet_res
+                    if index == len(all_sm_on_fabric):
+                        ibdiagnet_is_invoked = True
+                    result += ibdiagnet_res
+
             elif command == "ibswitches":
                 if port_obj["ibswitches"]["ibswitches_st"] != 0:
                     result += "Couldn't find command: ibswitches"
@@ -1508,7 +1547,8 @@ def add_fabric_multi_sub_command_if_exists(command):
                     result += "There are no ibhosts"
                 else:
                     result += command_result
-            result += "\n\n##################################################\n\n"
+            if index != len(all_sm_on_fabric):
+                result += "\n\n##################################################\n\n"
 
     fabric_commands_dict[command] = result
     available_fabric_commands_collection.append(command)
@@ -3405,6 +3445,13 @@ def generate_output():
     # Create output directories
     ensure_out_dir_existence()
     get_status_output("mkdir " + path + file_name)
+    # Create output directories for ibdiagnet files for multisubnets
+    for card in active_subnets:
+        for port_obj in active_subnets[card]:
+            port = port_obj["port_num"]
+            ibdiagnet_suffix = "_" + card + "_" + port
+            get_status_output("mkdir " + path + file_name + ibdiagnet_suffix)
+
     #invoke_command(['mkdir', path + file_name])
     get_status_output("mkdir " + path + file_name + "/tmp")
     #invoke_command(['mkdir', path + file_name + "/tmp"])
