@@ -4,7 +4,6 @@
 # Author:  Nizar Swidan  nizars@mellanox.com -- Created: 2015
 __author__ = 'nizars'
 
-
 import subprocess
 import sys
 import re
@@ -85,6 +84,14 @@ len_argv = len(sys.argv)
 driver_required_loading = False
 is_MFT_installed = False
 
+#active_subnets --> device_name
+#               --> port
+active_subnets = {}
+
+#installed_cards_ports --> device_name
+#                       --> port
+installed_cards_ports = {}
+
 json_flag = False
 
 verbose_flag = False
@@ -117,22 +124,65 @@ ibdiagnet_is_invoked = False
 # ibdiagnet_flag = True, means --ibdiagnet was provided
 ibdiagnet_flag = False
 
-ibswitches_st, ibswitches = get_status_output("timeout 10s /usr/sbin/ibswitches")
-if ibswitches_st != 0:
-    ibswitches = "Couldn't find command: ibswitches"
-else:
-    # regex expression working in python 2.7 not 2.6
-    #ibswitches = re.sub('^((?!Switch).)*$', '', ibswitches, re.IGNORECASE,re.MULTILINE)
-    ibswitches = ibswitches.splitlines()
-    ibswitches_new = ''
-    for ibswitch in ibswitches:
-        if ibswitch.startswith('Switch'):
-            if ibswitches_new == '':
-                ibswitches_new = ibswitch
-            else:
-                ibswitches_new = ibswitches_new + '\n' + ibswitch
-    ibswitches = ibswitches_new
-    
+# Runs ibswitches for a given card and port and returns it output and run status
+def get_ibswitches_output(card, port):
+    ibswitches_st, ibswitches = get_status_output("timeout 10s /usr/sbin/ibswitches -C " + card +" -P " + port)
+    if ibswitches_st != 0:
+        ibswitches = "Couldn't find command: ibswitches"
+    else:
+        # regex expression working in python 2.7 not 2.6
+        #ibswitches = re.sub('^((?!Switch).)*$', '', ibswitches, re.IGNORECASE,re.MULTILINE)
+        ibswitches = ibswitches.splitlines()
+        ibswitches_new = ''
+        for ibswitch in ibswitches:
+            if ibswitch.startswith('Switch'):
+                if ibswitches_new == '':
+                    ibswitches_new = ibswitch
+                else:
+                    ibswitches_new = ibswitches_new + '\n' + ibswitch
+        ibswitches = ibswitches_new
+    return ibswitches_st, ibswitches
+
+#get the cards and ports that are installed and updates the active subnets
+def get_installed_cards_ports():
+    global active_subnets
+    global installed_cards_ports
+    st, ibstat = get_status_output("timeout 10s ibstat | grep " + '"' + "CA '\|Port " + '"' + " | grep -v GUID")
+    if st != 0:
+        return "Could not run: ibstat"
+    str_cards = ibstat.split("CA '")
+    if len(str_cards) > 0:
+        str_cards.pop(0)
+        if len(str_cards) > 0:
+            first = True
+            res = ""
+            all_sm_on_fabric = []
+            for card in str_cards:
+                card_name = card.split("'")[0]
+                installed_cards_ports[card_name] = []
+                str_ports = card.split("Port ")
+                if len(str_ports) > 0:
+                    str_ports.pop(0)
+                    if len(str_ports) > 0:
+                        for port in str_ports:
+                            port_num = port.split(":")[0]
+                            installed_cards_ports[card_name].append(port_num)
+                            i, sm = get_status_output("timeout 10s cat /sys/class/infiniband/" + card_name + "/ports/" + port_num+ "/sm_lid")
+                            dec_sm = int(sm, 0)
+                            if dec_sm not in all_sm_on_fabric:
+                                all_sm_on_fabric.append(dec_sm)
+                                if card_name not in active_subnets:
+                                    active_subnets[card_name] = []
+                                obj = {}
+                                obj["port_num"] = port_num
+                                ibswitches_st, ibswitches = get_ibswitches_output (card_name, port_num)
+                                obj["ibswitches"] = {}
+                                obj["ibswitches"]["ibswitches_st"] = ibswitches_st
+                                obj["ibswitches"]["ibswitches_output"] = ibswitches
+                                active_subnets[card_name].append(obj)
+
+get_installed_cards_ports()
+
 sys_class_net_exists = False
 if os.path.exists("/sys/class/net"):
     sys_class_net_exists = True
@@ -270,9 +320,12 @@ if (cur_os != "debian"):
 available_commands_collection = []
 
 
-fabric_commands_collection = ["ibdiagnet", "ib_find_bad_ports", "ib_find_disabled_ports", "ib_mc_info_show", "ib_topology_viewer", "ibhosts", "ibswitches", "ibstat", "ibstatus", "sminfo", "sm_status", "sm_version", "sm_master_is", "ib_switches_FW_scan", "Multicast_Information", "perfquery", "perfquery_cards_ports"]
+fabric_commands_collection = ["ib_mc_info_show", "sm_version", "Multicast_Information", "ibstat", "perfquery_cards_ports"]
+
+fabric_multi_sub_commands_collection = ["ibdiagnet", "ib_find_bad_ports", "ib_find_disabled_ports", "ib_topology_viewer", "ibhosts", "ibswitches",  "ibstatus", "sminfo", "sm_status", "sm_master_is", "ib_switches_FW_scan"]
 
 available_fabric_commands_collection = []
+
 
 
 internal_files_collection = ["/etc/opensm/partitions.conf", "/etc/opensm/opensm.conf", "/etc/infiniband/info", "/etc/infiniband/openib.conf", "/etc/modprobe.d/vxlan.conf", "/etc/security/limits.conf", "/boot/grub/grub.cfg", "/boot/grub/grub.conf", "/boot/grub/menu.lst", "/etc/default/grub", "/etc/host.conf", "/etc/hosts", "/etc/hosts.allow", "/etc/hosts.deny", "/etc/issue", "/etc/modprobe.conf", "/etc/ntp.conf", "/etc/resolv.conf", "/etc/sysctl.conf", "/etc/tuned.conf", "/etc/yum.conf", "/proc/cmdline", "/proc/cpuinfo", "/proc/devices", "/proc/diskstats", "/proc/dma", "/proc/interrupts", "/proc/meminfo", "/proc/modules", "/proc/mounts", "/proc/net/dev_mcast", "/proc/net/igmp", "/proc/partitions", "/proc/stat", "/proc/sys/net/ipv4/igmp_max_memberships", "/proc/sys/net/ipv4/igmp_max_msf", "/proc/uptime", "/proc/version", "/etc/rdma/rdma.conf"]
@@ -1012,40 +1065,25 @@ def multicast_information_handler():
     return res
 
 def perfquery_cards_ports_handler():
-    st, ibstat = get_status_output("timeout 10s ibstat | grep " + '"' + "CA '\|Port " + '"' + " | grep -v GUID")
-    if st != 0:
-        return "Could not run: ibstat"
-    cards = ibstat.split("CA '")
-    if len(cards) > 0:
-        cards.pop(0)
-        if len(cards) > 0:
-            first = True
-            res = ""
-            for card in cards:
-                card_name = card.split("'")[0]
-                ports = card.split("Port ")
-                if len(ports) > 0:
-                    ports.pop(0)
-                    if len(ports) > 0:
-                        for port in ports:
-                            port_num = port.split(":")[0]
-                            if not first:
-                                res += "\n\n============================================================\n\n"
-                            res += "perfquery --Ca " + card_name + " --Port " + port_num + "\n\n"
-                            st, perfquery = get_status_output("timeout 10s perfquery --Ca " + card_name + " --Port " + port_num)
-                            res += perfquery
-                            first = False
-            return res
-        else:
-            return "No Mellanox cards shown in ibstat"
-    else:
-        return "No Mellanox cards shown in ibstat"
+    global installed_cards_ports
+    if len(installed_cards_ports) == 0:
+       return "No Mellanox cards shown in ibstat"
+    res = ''
+    for card in installed_cards_ports:
+        if len(installed_cards_ports[card]) == 0:
+            return "No Mellanox ports shown in ibstat"
+        for port in installed_cards_ports[card]:
+            st, perfquery = get_status_output("timeout 10s perfquery --Ca " + card + " --Port " + port)
+            res += perfquery + "\n"
+            first = False
+    return res
 
-def ib_find_bad_ports_handler():
+
+def ib_find_bad_ports_handler(card, port):
     if is_ib != 0:
         return "No ibnetdiscover"
     
-    st, iblinkinfo_bad = get_status_output("timeout 10s iblinkinfo | grep Could")
+    st, iblinkinfo_bad = get_status_output("timeout 10s iblinkinfo --Ca " + card + " --Port " + port + "| grep Could")
     if st != 0:
         return iblinkinfo_bad
     
@@ -1056,11 +1094,11 @@ def ib_find_bad_ports_handler():
         res += iblinkinfo_bad + "\n"
     return res
 
-def ib_find_disabled_ports_handler():
+def ib_find_disabled_ports_handler(card, port):
     if is_ib != 0:
         return "No ibnetdiscover"
     
-    st, iblinkinfo_disabled = get_status_output("timeout 10s iblinkinfo | grep Disabled")
+    st, iblinkinfo_disabled = get_status_output("timeout 10s iblinkinfo --Ca " + card + " --Port " + port + "| grep Disabled")
     if st != 0:
         return iblinkinfo_disabled
     
@@ -1172,7 +1210,7 @@ def represents_Int_base_16(s):
     except ValueError:
         return False
 
-def ib_switches_FW_scan_handler():
+def ib_switches_FW_scan_handler(ibswitches_st, ibswitches):
     if (ibswitches_st != 0):
         return "Failed to run 'ibswitches' command"
     
@@ -1266,13 +1304,14 @@ def ib_switches_FW_scan_handler():
     res += "---------------------------------------------------------------------------------------------------------------------------------------\n"
     return res
 
-def ib_topology_viewer_handler():
+def ib_topology_viewer_handler(card, port):
     if (is_ib != 0):
         return "No ibnetdiscover"
-    
-    st, GUIDS = get_status_output("timeout 10s cat " + path+file_name + "/ibnetdiscover_p | grep -v -i sfb | grep -e ^SW | awk '{print $4}' | uniq")
+
+    suffix = card +"_" + port
+    st, GUIDS = get_status_output("timeout 10s cat " + path+file_name + "/ibnetdiscover_p_"+ suffix + " | grep -v -i sfb | grep -e ^SW | awk '{print $4}' | uniq")
     if (st != 0):
-        return "Could not run: " + '"' + "cat " + path+file_name + "/ibnetdiscover_p | grep -v -i sfb | grep -e ^SW | awk '{print $4}' | uniq" + '"'
+        return "Could not run: " + '"' + "cat " + path+file_name + "/ibnetdiscover_p_"+ suffix + " | grep -v -i sfb | grep -e ^SW | awk '{print $4}' | uniq" + '"'
     if (GUIDS == ""):
         return "No switches were found"
     
@@ -1287,14 +1326,14 @@ def ib_topology_viewer_handler():
         if ( len(GUIDS[index].split()) > 1 ):
             continue
         
-        st, desc = get_status_output("timeout 10s cat " + path+file_name + "/ibnetdiscover_p | grep -v -i sfb | grep -e ^SW | grep " + GUIDS[index] + "..x")
+        st, desc = get_status_output("timeout 10s cat " + path+file_name + "/ibnetdiscover_p_"+ suffix + " | grep -v -i sfb | grep -e ^SW | grep " + GUIDS[index] + "..x")
         
         if (st == 0):
             HCA_ports_count = 0
             switch_ports_count = 0
             desc = desc.split("'")[1]
             
-            st, guid_ports = get_status_output("timeout 10s cat " + path+file_name + "/ibnetdiscover_p | grep -v -i sfb | grep -e ^SW | grep " + GUIDS[index] + "..x | awk '{print $8}'")
+            st, guid_ports = get_status_output("timeout 10s cat " + path+file_name + "/ibnetdiscover_p_"+ suffix + " | grep -v -i sfb | grep -e ^SW | grep " + GUIDS[index] + "..x | awk '{print $8}'")
             if (st == 0):
                 guid_ports = guid_ports.split("\n")
                 for guid_port in guid_ports:
@@ -1308,41 +1347,47 @@ def ib_topology_viewer_handler():
             res += str(HCA_ports_count) + " HCA ports and " + str(switch_ports_count) + " switch ports.\n"
     return res
 
-def sm_master_is_handler():
+def sm_master_is_handler(card, port):
     if (st_saquery != 0):
          return "saquery command is not found"
-    st, MasterLID = get_status_output("timeout 10s /usr/sbin/sminfo | awk '{print $4}'")
+    st, MasterLID = get_status_output("timeout 10s /usr/sbin/sminfo -C " + card +" -P " + port + " | awk '{print $4}'")
     if (st != 0):
-        return "Could not retrieve Master LID. Reason: Could not run " + '"' + "/usr/sbin/sminfo | awk '{print $4}'" + '"'
-    st, all_sms = get_status_output("timeuot 10s /usr/sbin/smpquery nodedesc " + MasterLID)
+        return "Could not retrieve Master LID. Reason: Could not run " + '"' + "/usr/sbin/sminfo -C " + card +" -P " + port + " | awk '{print $4}'" + '"'
+    st, all_sms = get_status_output("timeout 10s /usr/sbin/smpquery nodedesc " + MasterLID)
     if (st != 0):
         return "Could not retrieve all SM. Reason: Could not run " + '"' + "/usr/sbin/smpquery nodedesc " + MasterLID + '"'
     res = "IB fabric SM master is: (" + all_sms + ")\nAll SMs in the fabric: "
     
-    st, SMS = get_status_output("timeout 10s saquery -s 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'")
+    st, SMS = get_status_output("timeout 10s saquery -s -C " + card +" -P " + port + " 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'")
+    #
     if (st != 0):
-        return "Could not retrieve all SM. Reason: Could not run " + '"' + "saquery -s 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'" + '"'
+        return "Could not retrieve all SM. Reason: Could not run " + '"' + "saquery -s -C " + card +" -P " + port + " 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'" + '"'
     SMS = set(SMS.split())
     
     for SM in SMS:
         st, smquery_nodedesc = get_status_output("timeout 10s /usr/sbin/smpquery nodedesc " + SM)
         if (st != 0):
             smquery_nodedesc = "Could not run " + '"' + "/usr/sbin/smpquery nodedesc " + SM + '"'
-        st, sminfo = get_status_output("timeout 10s /usr/sbin/sminfo " + SM)
+        st, sminfo = get_status_output("timeout 10s /usr/sbin/sminfo -C " + card +" -P " + port + " " + SM)
         if (st != 0):
-            sminfo = "Could not run " + '"' + "/usr/sbin/sminfo " + SM + '"'
+            sminfo = "Could not run " + '"' + "/usr/sbin/sminfo -C " + card +" -P " + port + " " + SM + '"'
         res += "\n\nSM: " + SM + "\n" + smquery_nodedesc + "\n" + sminfo
     
     return res
 
-def sm_status_handler():
+def sm_info_handler(card, port):
+    status, result = get_status_output("timeout 10s sminfo -C " + card +" -P " + port)
+    if (status != 0):
+        result = "Couldn't find command: " + command
+    return result
+
+def sm_status_handler(card, port):
     SmActivity_1=0
     NoSM=2 
     res = ""
-    
     for lo in range(0,4): 
         get_status_output("timeout 10s sleep 3")
-        st, SmActivity = get_status_output("timeout 10s sminfo |awk '{ print $10 }'")
+        st, SmActivity = get_status_output("timeout 10s sminfo -C " + card +" -P " + port + " |awk '{ print $10 }'")
         if (st != 0):
             SmActivity = "<N/A>"
         st, c_time = get_status_output("timeout 10s date +%T")
@@ -1376,12 +1421,12 @@ def sm_version_handler():
             res = "Couldn't find command: timeout 10s echo OpenSM installed packages: ; timeout 10s dpkg -l | grep opensm"
     return res
 
-def ibdiagnet_handler():
+def ibdiagnet_handler(card, port):
+    global ibdiagnet_res
     if (ibdiagnet_is_invoked == False):
-        global ibdiagnet_res
         if (os.path.exists(path+file_name+"/ibdiagnet") == False):
             os.mkdir(path+file_name+"/ibdiagnet")
-        st, ibdiagnet_res = get_status_output("timeout 10s ibdiagnet -o " + path+file_name+"/ibdiagnet")
+        st, ibdiagnet_res = get_status_output("timeout 10s ibdiagnet -i "+ card +" -p "+ port +" -o " + path+file_name+"/ibdiagnet")
 
 def clean_ibnodes(ibnodes, start_string):
     res = ""
@@ -1398,51 +1443,82 @@ def update_saquery():
 
 def add_fabric_command_if_exists(command):
     global ibdiagnet_is_invoked
+    global active_subnets
+    global fabric_commands_dict
+    global available_fabric_commands_collection
+
     if (command == "Multicast_Information"):
         result = multicast_information_handler()
-    elif (command == "perfquery_cards_ports"):
-        result = perfquery_cards_ports_handler()
-    elif (command == "ib_find_bad_ports"):
-        result = ib_find_bad_ports_handler()
-    elif (command == "ib_find_disabled_ports"):
-        result = ib_find_disabled_ports_handler()
     elif (command == "ib_mc_info_show"):
         result = ib_mc_info_show_handler()
-    elif (command == "ib_switches_FW_scan"):
-        result = ib_switches_FW_scan_handler()
-    elif (command == "ib_topology_viewer"):
-        result = ib_topology_viewer_handler()
-    elif (command == "sm_master_is"):
-        result = sm_master_is_handler()
-    elif (command == "sm_status"):
-        result = sm_status_handler()
+    elif (command == "perfquery_cards_ports"):
+        result = perfquery_cards_ports_handler()
     elif (command == "sm_version"):
         result = sm_version_handler()
-    elif (command == "ibdiagnet"):
-        if ibdiagnet_flag == False:
-            return
-        if (ibdiagnet_is_invoked == False):
-            ibdiagnet_handler()
-            ibdiagnet_is_invoked = True
-        result = ibdiagnet_res
-    elif command == "ibswitches":
-        if ibswitches_st != 0:
-            result = "Couldn't find command: ibswitches"
-        elif ibswitches == "":
-            result = "There are no ibswitches"
-        else:
-            result = ibswitches
     else:
         # invoking regular command
         status, result = get_status_output("timeout 10s " + command)
         if (status != 0):
             result = "Couldn't find command: " + command
-        elif result == "" and command == "ibhosts":
-            result = "There are no ibhosts"
-    
+
     fabric_commands_dict[command] = result
     available_fabric_commands_collection.append(command)
 
+def add_fabric_multi_sub_command_if_exists(command):
+    global ibdiagnet_is_invoked
+    global active_subnets
+    global fabric_commands_dict
+    global available_fabric_commands_collection
+
+    result = ""
+    #multi subnets commands:
+    for card in active_subnets:
+        for port_obj in active_subnets[card]:
+            port = port_obj["port_num"]
+            suffix = " for the subnet running though card " + card +" port " + port
+            result +=  command + suffix + "\n\n"
+
+            if (command == "ib_find_bad_ports"):
+                result += ib_find_bad_ports_handler(card, port)
+            elif (command == "sm_status"):
+                result += sm_status_handler(card, port)
+            elif (command == "sminfo"):
+                result += sm_info_handler(card, port)
+            elif (command == "ib_find_disabled_ports"):
+                result += ib_find_disabled_ports_handler(card, port)
+            elif (command == "ib_switches_FW_scan"):
+                result += ib_switches_FW_scan_handler(port_obj["ibswitches"]["ibswitches_st"], port_obj["ibswitches"]["ibswitches_output"])
+            elif (command == "ib_topology_viewer"):
+                result += ib_topology_viewer_handler(card, port)
+            elif (command == "sm_master_is"):
+                result += sm_master_is_handler(card, port)
+            elif (command == "ibdiagnet"):
+                if ibdiagnet_flag == False:
+                    return
+                if (ibdiagnet_is_invoked == False):
+                    ibdiagnet_handler(card, port)
+                    ibdiagnet_is_invoked = True
+                result += ibdiagnet_res
+            elif command == "ibswitches":
+                if port_obj["ibswitches"]["ibswitches_st"] != 0:
+                    result += "Couldn't find command: ibswitches"
+                elif port_obj["ibswitches"]["ibswitches_output"] == "":
+                    result += "There are no ibswitches"
+                else:
+                    result += port_obj["ibswitches"]["ibswitches_output"]
+            else:
+                # invoking regular command
+                status, command_result = get_status_output("timeout 10s " + command + " -C " + card +" -P " + port)
+                if (status != 0):
+                    result += "Couldn't find command: " + command  + " -C " + card +" -P " + port
+                elif result == "" and command == "ibhosts":
+                    result += "There are no ibhosts"
+                else:
+                    result += command_result
+            result += "\n\n##################################################\n\n"
+
+    fabric_commands_dict[command] = result
+    available_fabric_commands_collection.append(command)
 #----------------------------------------------------------
 #               Internal Files Dictionary Handler
 
@@ -1477,6 +1553,7 @@ def add_ext_file_handler(field_name, fil_name, command_output):
         available_external_files_collection.append([field_name, fil_name])
 
 def add_external_file_if_exists(field_name, curr_path):
+    global active_subnets
     command_output = ""
     err_flag = 0
     err_command = "No '" + field_name + "' External File\nReason: Couldn't find command: "
@@ -1520,12 +1597,15 @@ def add_external_file_if_exists(field_name, curr_path):
             status, command_output = get_status_output("timeout 10s " + ib_res)
             if (status == 0):
                 add_ext_file_handler("ibnetdiscover", "ibnetdiscover", command_output)
-                status, command_output = get_status_output("timeout 10s " + ib_res + " -p")
-                if (status == 0):
-                    add_ext_file_handler("ibnetdiscover -p", "ibnetdiscover_p", command_output)
-                else:
-                    err_flag = 1
-                    err_command = "No 'ibnetdiscover_p' External File\nReason: Couldn't find command: ibnetdiscover -p"
+                for card in active_subnets:
+                    for port in active_subnets[card]:
+                        status, command_output = get_status_output("timeout 10s " + ib_res + " -p -C " + card +" -P " + port["port_num"])
+                        suffix =  card +"_" + port["port_num"]
+                        if (status == 0):
+                            add_ext_file_handler("ibnetdiscover -p" + suffix, "ibnetdiscover_p_" + suffix, command_output)
+                        else:
+                            err_flag = 1
+                            err_command = "No 'ibnetdiscover_p' External File\nReason: Couldn't find command: ibnetdiscover -p" + suffix
             else:
                 err_flag = 1
                 err_command += ib_res
@@ -1648,6 +1728,16 @@ def arrange_fabric_commands_section():
         if verbose_count == 2:
             print("\t\t" + cmd + " - start")
         add_fabric_command_if_exists(cmd)
+        if verbose_count == 2:
+            print ("\t\t" + cmd + " - end")
+    if verbose_flag:
+        print("\tGenerating fabric diagnostic information section has ended")
+    
+    # add fabric multi-subnets commands list if configured as IB
+    for cmd in fabric_multi_sub_commands_collection:
+        if verbose_count == 2:
+            print("\t\t" + cmd + " - start")
+        add_fabric_multi_sub_command_if_exists(cmd)
         if verbose_count == 2:
             print ("\t\t" + cmd + " - end")
     if verbose_flag:
@@ -3311,13 +3401,17 @@ def load_modules():
         driver_required_loading = False
     else:
         driver_required_loading = True
+                            
 
+# Get all subnets installed on the server - update the global variable subnets 
+def get_subnets():
+    pass
 # Create the output tar
 def generate_output():
     validate_not_file()
     print_in_process()
     confirm_mlnx_cards()
-    
+
     # Create output directories
     ensure_out_dir_existence()
     get_status_output("mkdir " + path + file_name)
