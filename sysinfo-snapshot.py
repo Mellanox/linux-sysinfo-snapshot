@@ -167,8 +167,13 @@ def get_installed_cards_ports():
                         for port in str_ports:
                             port_num = port.split(":")[0]
                             installed_cards_ports[card_name].append(port_num)
+<<<<<<< HEAD
                             i, sm = get_status_output("timeout 10s cat /sys/class/infiniband/" + card_name + "/ports/" + port_num+ "/sm_lid")
                             dec_sm = int(sm, 0)
+=======
+                            i, sm_guid = get_status_output("timeout 10s /usr/sbin/sminfo -C " + card_name +" -P " + port_num + " | awk '{print $7}'")
+                            dec_sm = int(sm_guid.strip(','), 0)
+>>>>>>> Title: Add support for multi-subnet environments in ib commands
                             if dec_sm not in all_sm_on_fabric:
                                 all_sm_on_fabric.append(dec_sm)
                                 if card_name not in active_subnets:
@@ -320,9 +325,15 @@ if (cur_os != "debian"):
 available_commands_collection = []
 
 
+<<<<<<< HEAD
 fabric_commands_collection = ["ib_mc_info_show", "sm_version", "Multicast_Information", "ibstat", "perfquery_cards_ports"]
 
 fabric_multi_sub_commands_collection = ["ibdiagnet", "ib_find_bad_ports", "ib_find_disabled_ports", "ib_topology_viewer", "ibhosts", "ibswitches",  "ibstatus", "sminfo", "sm_status", "sm_master_is", "ib_switches_FW_scan"]
+=======
+fabric_commands_collection = ["ibstatus", "ib_mc_info_show", "sm_version", "Multicast_Information", "ibstat", "perfquery_cards_ports"]
+
+fabric_multi_sub_commands_collection = ["ibdiagnet", "ib_find_bad_ports", "ib_find_disabled_ports", "ib_topology_viewer", "ibhosts", "ibswitches", "sminfo", "sm_status", "sm_master_is", "ib_switches_FW_scan"]
+>>>>>>> Title: Add support for multi-subnet environments in ib commands
 
 available_fabric_commands_collection = []
 
@@ -1469,6 +1480,10 @@ def add_fabric_multi_sub_command_if_exists(command):
     global active_subnets
     global fabric_commands_dict
     global available_fabric_commands_collection
+<<<<<<< HEAD
+=======
+    global ibdiagnet_res
+>>>>>>> Title: Add support for multi-subnet environments in ib commands
 
     result = ""
     #multi subnets commands:
@@ -1728,6 +1743,16 @@ def arrange_fabric_commands_section():
         if verbose_count == 2:
             print("\t\t" + cmd + " - start")
         add_fabric_command_if_exists(cmd)
+        if verbose_count == 2:
+            print ("\t\t" + cmd + " - end")
+    if verbose_flag:
+        print("\tGenerating fabric diagnostic information for multi-subnets commands")
+
+    # add fabric multi-subnets commands list if configured as IB
+    for cmd in fabric_multi_sub_commands_collection:
+        if verbose_count == 2:
+            print("\t\t" + cmd + " - start")
+        add_fabric_multi_sub_command_if_exists(cmd)
         if verbose_count == 2:
             print ("\t\t" + cmd + " - end")
     if verbose_flag:
@@ -3403,9 +3428,13 @@ def load_modules():
         driver_required_loading = True
                             
 
+<<<<<<< HEAD
 # Get all subnets installed on the server - update the global variable subnets 
 def get_subnets():
     pass
+=======
+
+>>>>>>> Title: Add support for multi-subnet environments in ib commands
 # Create the output tar
 def generate_output():
     validate_not_file()
