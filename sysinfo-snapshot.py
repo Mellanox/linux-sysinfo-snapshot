@@ -3459,6 +3459,8 @@ def generate_output():
         if verbose_flag:
             print("\tGenerating sr-iov HTML page has ended")
 
+    if verbose_flag:
+        print("\tDiscovering installed IB cards, ports and subnets has started")
     if (is_ib == 0 and no_ib_flag == False):
         get_installed_cards_ports()
         # Create output directories for ibdiagnet files for multisubnets
@@ -3467,7 +3469,9 @@ def generate_output():
                 port = port_obj["port_num"]
                 ibdiagnet_suffix = "_" + card + "_" + port
                 get_status_output("mkdir " + path + file_name + ibdiagnet_suffix)
-
+    if verbose_flag:
+        print("\tDiscovering installed IB cards, ports and subnets has ended")
+    
     # operation is done here
     arrange_dicts()
 
