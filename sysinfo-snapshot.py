@@ -178,7 +178,7 @@ def get_installed_cards_ports():
                                     active_subnets[card_name] = []
                                 obj = {}
                                 obj["port_num"] = port_num
-                                ibswitches_st, ibswitches = get_ibswitches_output (card_name, port_num)
+                                ibswitches_st, ibswitches = get_ibswitches_output(card_name, port_num)
                                 obj["ibswitches"] = {}
                                 obj["ibswitches"]["ibswitches_st"] = ibswitches_st
                                 obj["ibswitches"]["ibswitches_output"] = ibswitches
@@ -335,8 +335,6 @@ internal_files_collection = ["/etc/opensm/partitions.conf", "/etc/opensm/opensm.
 
 if (cur_os == "debian"):
     internal_files_collection.extend(["/etc/network/interfaces"])
-else:
-    internal_files_collection.extend(["/etc/redhat-release"])
 
 available_internal_files_collection = []
 
@@ -1212,7 +1210,7 @@ def represents_Int_base_16(s):
     except ValueError:
         return False
 
-def ib_switches_FW_scan_handler(ibswitches_st, ibswitches):
+def ib_switches_FW_scan_handler(ibswitches_st, ibswitches, ibdiagnet_suffix):
     if (ibswitches_st != 0):
         return "Failed to run 'ibswitches' command"
 
@@ -1247,9 +1245,8 @@ def ib_switches_FW_scan_handler(ibswitches_st, ibswitches):
         fw_build_id = "N/A"
         hw_dev_rev = "N/A"
         if ibdiagnet_is_invoked:
-            tmp_st, row = get_status_output("awk '/START_NODES_INFO/,/END_NODES_INFO/' " + path+file_name+"/ibdiagnet/ibdiagnet2.db_csv | grep ^" + guid )
+            tmp_st, row = get_status_output("awk '/START_NODES_INFO/,/END_NODES_INFO/' " + path + file_name + ibdiagnet_suffix + "/ibdiagnet/ibdiagnet2.db_csv | grep ^" + guid )
             splt_row = re.split("[" + re.escape(",\n") + "]", row)
-
             if ( 1 < len(splt_row) and (represents_Int_base_16(splt_row[1]) == True) ):  
                 device_id = str(int(splt_row[1], 16))
 
@@ -1422,13 +1419,13 @@ def sm_version_handler():
             res = "Couldn't find command: timeout 10s echo OpenSM installed packages: ; timeout 10s dpkg -l | grep opensm"
     return res
 
-def ibdiagnet_handler(card, port):
+def ibdiagnet_handler(card, port, ibdiagnet_suffix):
     global ibdiagnet_res
     suffix = "_" + card + "_" + port
     if (ibdiagnet_is_invoked == False):
-        if (os.path.exists(path+file_name+"/ibdiagnet") == False):
-            os.mkdir(path+file_name+"/ibdiagnet")
-        st, ibdiagnet_res = get_status_output("timeout 10s ibdiagnet -i "+ card +" -p "+ port +" -o " + path+file_name+"/ibdiagnet")
+        if (os.path.exists(path + file_name + ibdiagnet_suffix +"/ibdiagnet") == False):
+            os.mkdir(path + file_name + ibdiagnet_suffix + "/ibdiagnet")
+        st, ibdiagnet_res = get_status_output("timeout 10s ibdiagnet -i "+ card +" -p "+ port +" -o " + path + file_name + ibdiagnet_suffix + "/ibdiagnet")
 
 def clean_ibnodes(ibnodes, start_string):
     res = ""
@@ -1453,36 +1450,10 @@ def add_fabric_command_if_exists(command):
         result = ib_mc_info_show_handler()
     elif (command == "perfquery_cards_ports"):
         result = perfquery_cards_ports_handler()
-    elif (command == "ib_find_bad_ports"):
-        result = ib_find_bad_ports_handler()
-    elif (command == "ib_find_disabled_ports"):
-        result = ib_find_disabled_ports_handler()
-    elif (command == "ib_mc_info_show"):
-        result = ib_mc_info_show_handler()
-    elif (command == "ib_switches_FW_scan"):
-        result = ib_switches_FW_scan_handler()
-    elif (command == "ib_topology_viewer"):
-        result = ib_topology_viewer_handler()
-    elif (command == "sm_master_is"):
-        result = sm_master_is_handler()
     elif (command == "sm_status"):
         result = sm_status_handler()
     elif (command == "sm_version"):
         result = sm_version_handler()
-    elif (command == "ibdiagnet"):
-        if ibdiagnet_flag == False:
-            return
-        if (ibdiagnet_is_invoked == False):
-            ibdiagnet_handler()
-            ibdiagnet_is_invoked = True
-        result = ibdiagnet_res
-    elif command == "ibswitches":
-        if ibswitches_st != 0:
-            result = "Couldn't find command: ibswitches"
-        elif ibswitches == "":
-            result = "There are no ibswitches"
-        else:
-            result = ibswitches
     else:
         # invoking regular command
         status, result = get_status_output("timeout 10s " + command)
@@ -1504,6 +1475,7 @@ def add_fabric_multi_sub_command_if_exists(command):
         for port_obj in active_subnets[card]:
             index += 1
             port = port_obj["port_num"]
+            ibdiagnet_suffix = "_" + card +"_" + port
             suffix = " for the subnet running though card " + card +" port " + port
             result +=  command + suffix + "\n\n"
 
@@ -1516,7 +1488,6 @@ def add_fabric_multi_sub_command_if_exists(command):
             elif (command == "ib_find_disabled_ports"):
                 result += ib_find_disabled_ports_handler(card, port)
             elif (command == "ib_switches_FW_scan"):
-                ibdiagnet_suffix = "_" + card +"_" + port
                 result += ib_switches_FW_scan_handler(port_obj["ibswitches"]["ibswitches_st"], port_obj["ibswitches"]["ibswitches_output"], ibdiagnet_suffix)
             elif (command == "ib_topology_viewer"):
                 result += ib_topology_viewer_handler(card, port)
@@ -1526,7 +1497,7 @@ def add_fabric_multi_sub_command_if_exists(command):
                 if ibdiagnet_flag == False:
                     return
                 if (ibdiagnet_is_invoked == False):
-                    ibdiagnet_handler(card, port)
+                    ibdiagnet_handler(card, port, ibdiagnet_suffix)
                     if index == len(all_sm_on_fabric):
                         ibdiagnet_is_invoked = True
                     result += ibdiagnet_res
@@ -1634,7 +1605,7 @@ def add_external_file_if_exists(field_name, curr_path):
                         status, command_output = get_status_output("timeout 10s " + ib_res + " -p -C " + card +" -P " + port["port_num"])
                         suffix =  card +"_" + port["port_num"]
                         if (status == 0):
-                            add_ext_file_handler("ibnetdiscover -p" + suffix, "ibnetdiscover_p_" + suffix, command_output)
+                            add_ext_file_handler("ibnetdiscover -p " + suffix, "ibnetdiscover_p_" + suffix, command_output)
                         else:
                             err_flag = 1
                             err_command = "No 'ibnetdiscover_p' External File\nReason: Couldn't find command: ibnetdiscover -p" + suffix
@@ -3441,16 +3412,10 @@ def generate_output():
     validate_not_file()
     print_in_process()
     confirm_mlnx_cards()
-
+    
     # Create output directories
     ensure_out_dir_existence()
     get_status_output("mkdir " + path + file_name)
-    # Create output directories for ibdiagnet files for multisubnets
-    for card in active_subnets:
-        for port_obj in active_subnets[card]:
-            port = port_obj["port_num"]
-            ibdiagnet_suffix = "_" + card + "_" + port
-            get_status_output("mkdir " + path + file_name + ibdiagnet_suffix)
 
     #invoke_command(['mkdir', path + file_name])
     get_status_output("mkdir " + path + file_name + "/tmp")
@@ -3493,6 +3458,15 @@ def generate_output():
         arrange_sriov_dicts()
         if verbose_flag:
             print("\tGenerating sr-iov HTML page has ended")
+
+    if (is_ib == 0 and no_ib_flag == False):
+        get_installed_cards_ports()
+        # Create output directories for ibdiagnet files for multisubnets
+        for card in active_subnets:
+            for port_obj in active_subnets[card]:
+                port = port_obj["port_num"]
+                ibdiagnet_suffix = "_" + card + "_" + port
+                get_status_output("mkdir " + path + file_name + ibdiagnet_suffix)
 
     # operation is done here
     arrange_dicts()
@@ -3732,7 +3706,6 @@ def confirm_root():
 def main():
     if not (len(sys.argv) == 2 and (sys.argv[1] == '-v' or sys.argv[1] == '--version' or sys.argv[1] == '-h' or sys.argv[1] == '--help')):
         confirm_root()
-        get_installed_cards_ports()
     execute()
 
 if __name__ == '__main__':
