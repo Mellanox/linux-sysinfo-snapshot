@@ -50,6 +50,9 @@ There are many flags (options) that you can provide as below:
   is activated (virtual functions exist).
   This html file dumps all sr-iov related commands/internal files
 
+- By default PCIE commands/functions are not added to the output
+  --pcie adds them, e.g. 'lspci -vvvxxxxx'
+
 - The tool doesn't change any module status at all during runtime, except for:
 * mst module, if the mst module was stopped before, the tool will load it via 'mst start'
 * and revert it to it's initial status via 'mst stop'

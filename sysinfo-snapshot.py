@@ -77,7 +77,7 @@ signal.signal(signal.SIGINT, signal_handler)
 ###########################################################
 #        General Variables
 
-version = "3.2.0"
+version = "3.2.1"
 
 sys_argv = sys.argv
 len_argv = len(sys.argv)
