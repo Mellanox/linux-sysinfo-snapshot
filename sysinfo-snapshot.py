@@ -77,7 +77,7 @@ signal.signal(signal.SIGINT, signal_handler)
 ###########################################################
 #        General Variables
 
-version = "3.2.1"
+version = "3.2.2"
 
 sys_argv = sys.argv
 len_argv = len(sys.argv)
@@ -170,7 +170,11 @@ def get_installed_cards_ports():
                         for port in str_ports:
                             port_num = port.split(":")[0]
                             installed_cards_ports[card_name].append(port_num)
-                            i, sm_guid = get_status_output("timeout 10s /usr/sbin/sminfo -C " + card_name + " -P " + port_num + " | awk '{print $7}'")
+                            i, sminfo_output = get_status_output("timeout 10s /usr/sbin/sminfo -C " + card_name + " -P " + port_num + "")
+                            if i != 0:
+                                continue
+                            # ex: sminfo: sm lid 3 sm guid 0x248a0703009c0196, activity count 38526 priority 15 state 3 SMINFO_MASTER
+                            sm_guid = sninf_output.split()[6]
                             dec_sm = int(sm_guid.strip(','), 0)
                             if dec_sm not in all_sm_on_fabric:
                                 all_sm_on_fabric.append(dec_sm)
@@ -485,8 +489,6 @@ def eth_tool_all_interfaces_handler():
     res = ""
     options = ["", "-i", "-g", "-a", "-k", "-c", "-T", "--show-priv-flags", "-n", "-l", "-x"]
     for interface in net_devices:
-        #if (interface == "lo" or interface == "bonding_masters"):
-        #    continue
         if (first == False):
             res += "\n\n"
         for option in options:
