@@ -77,7 +77,7 @@ signal.signal(signal.SIGINT, signal_handler)
 ###########################################################
 #        General Variables
 
-version = "3.2.2"
+version = "3.2.3"
 
 sys_argv = sys.argv
 len_argv = len(sys.argv)
@@ -174,7 +174,7 @@ def get_installed_cards_ports():
                             if i != 0:
                                 continue
                             # ex: sminfo: sm lid 3 sm guid 0x248a0703009c0196, activity count 38526 priority 15 state 3 SMINFO_MASTER
-                            sm_guid = sninf_output.split()[6]
+                            sm_guid = sminfo_output.split()[6]
                             dec_sm = int(sm_guid.strip(','), 0)
                             if dec_sm not in all_sm_on_fabric:
                                 all_sm_on_fabric.append(dec_sm)
@@ -459,10 +459,28 @@ def eth_tool_all_interfaces_handler():
     if not sys_class_net_exists:
         return "No Net Devices - The path /sys/class/net does not exist"
 
-    st, net_devices = get_status_output("timeout 10s ls /sys/class/net")
+    st, lspci_devices = get_status_output("timeout 10s lspci | grep Mellanox")
     if (st != 0):
-        return "Failed to run the command " + '"' + "ls /sys/class/net" + '"'
-    net_devices = net_devices.split()
+        return "Failed to run the command lspci | grep Mellanox"
+
+    mlx_pci_devices = []
+    lspci_devices = lspci_devices.splitlines()
+    for line in lspci_devices:
+        device_pci = line.split()
+        # e.g 81:00.0 Infiniband controller: Mellanox Technologies MT27800 Family [ConnectX-5]
+        mlx_pci_devices.append(device_pci[0])
+
+    net_devices = []
+    st, all_interfaces = get_status_output("timeout 10s ls -la /sys/class/net")
+    if (st != 0):
+        return "Failed to run the command ls -la /sys/class/net"
+
+    for device in mlx_pci_devices:
+        # e.g lrwxrwxrwx  1 root root 0 Oct 26 15:51 ens11f0 -> ../../devices/pci0000:80/0000:80:03.0/0000:81:00.0/net/ens11f0
+        match = re.findall(device + '\/net\/(\w+)',all_interfaces)
+        if match:
+            for interface in match:
+                net_devices.append(interface)
 
     if "lo" in net_devices:
         try:
