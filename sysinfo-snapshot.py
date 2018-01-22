@@ -2,6 +2,7 @@
 # -*- python -*-
 #
 # Author:  Nizar Swidan  nizars@mellanox.com -- Created: 2015
+# Modified:  Anan Fakheraldin  ananf@mellanox.com -- Modified: 2018
 __author__ = 'nizars'
 
 
@@ -77,7 +78,7 @@ signal.signal(signal.SIGINT, signal_handler)
 ###########################################################
 #        General Variables
 
-version = "3.2.3"
+version = "3.2.4"
 
 sys_argv = sys.argv
 len_argv = len(sys.argv)
@@ -318,7 +319,7 @@ pcie_collection = ["lspci -vvvxxxxx"]
 
 ib_collection = []
 
-commands_collection = ["ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "itrace", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", "df -lh", "ethtool --version", "eth_tool_all_interfaces", "fdisk -l", "fw_ini_dump", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", "initctl list", "ip a s", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod", "lspci", "lspci -tv", "lspci_xxxvvv", "lspci -vvvxxxxx", "mount", "mstregdump-func", "netstat -anp", "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info", "ps -eLo", "route -n", "service --status-all", "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all", "sysctl -a", "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname -a", "uptime", "yy_MLX_modules_parameters", "yy_IB_modules_parameters", "zz_proc_net_bonding_files", "zz_sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "mlxcables --DDM/--read_all_regs", "ip addr show", "ip -6 addr show", "ip link show", "ip route show", "ip -6 route show", "modinfo", "show_pretty_gids", "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status"]
+commands_collection = ["ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "itrace", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", "df -lh", "/opt/mellanox/ethtool/sbin/ethtool --version", "/sbin/ethtool --version", "ethtool_all_interfaces", "fdisk -l", "fw_ini_dump", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", "initctl list", "ip a s", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod", "lspci", "lspci -tv", "lspci_xxxvvv", "lspci -vvvxxxxx", "mount", "mstregdump-func", "netstat -anp", "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info", "ps -eLo", "route -n", "service --status-all", "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all", "sysctl -a", "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname -a", "uptime", "yy_MLX_modules_parameters", "yy_IB_modules_parameters", "zz_proc_net_bonding_files", "zz_sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "mlxcables --DDM/--read_all_regs", "ip addr show", "ip -6 addr show", "ip link show", "ip route show", "ip -6 route show", "modinfo", "show_pretty_gids", "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status"]
 
 if (cur_os != "debian"):
     commands_collection.extend(["chkconfig --list | sort"])
@@ -451,11 +452,11 @@ def show_pretty_gids_handler():
     return res
 
 #**********************************************************
-#        eth_tool_all_interfaces Handlers
+#        ethtool_all_interfaces Handlers
 
 pf_devices = []
 
-def eth_tool_all_interfaces_handler():
+def ethtool_all_interfaces_handler():
     if not sys_class_net_exists:
         return "No Net Devices - The path /sys/class/net does not exist"
 
@@ -474,6 +475,7 @@ def eth_tool_all_interfaces_handler():
     st, all_interfaces = get_status_output("timeout 10s ls -la /sys/class/net")
     if (st != 0):
         return "Failed to run the command ls -la /sys/class/net"
+
 
     for device in mlx_pci_devices:
         # e.g lrwxrwxrwx  1 root root 0 Oct 26 15:51 ens11f0 -> ../../devices/pci0000:80/0000:80:03.0/0000:81:00.0/net/ens11f0
@@ -502,15 +504,27 @@ def eth_tool_all_interfaces_handler():
     if (len(net_devices) > 0):
         get_status_output("mkdir " + path + file_name + "/ethtool_S")
         #invoke_command(['mkdir', path + file_name + "/ethtool_S"])
-    
-    first = True
-    res = ""
+
+    ethtool_command = "/opt/mellanox/ethtool/sbin/ethtool"
+    res = "The Running ethtool is - "
+    st, ethtool_version = get_status_output("timeout 10s /opt/mellanox/ethtool/sbin/ethtool --version")
+    if st != 0:
+        ethtool_command = "/sbin/ethtool"
+        st, ethtool_version = get_status_output("timeout 10s /sbin/ethtool  --version")
+        if st != 0:
+            return "Failed to run the command /sbin/ethtool"
+        #Output - ethtool version 4.8
+        version = ethtool_version.split()[2]
+        if (float(version) < 4.7):
+            res = ""
+            ethtool_version = "Warning - " + ethtool_version + ", it is older than 4.7 ! \nIt will not show the 25g generation speeds correctly, cause ethtool 4.6 and below do not support it."
+
+    res += ethtool_version 
     options = ["", "-i", "-g", "-a", "-k", "-c", "-T", "--show-priv-flags", "-n", "-l", "-x"]
     for interface in net_devices:
-        if (first == False):
-            res += "\n\n"
+        res += "\n\n"
         for option in options:
-            st, ethtool_interface = get_status_output("timeout 10s ethtool " + option + " " + interface)
+            st, ethtool_interface = get_status_output("timeout 10s " + ethtool_command + " " + option + " " + interface)
             res += "ethtool " + option + " " + interface + "\n"
             if (st == 0):    
                 res += ethtool_interface
@@ -518,7 +532,7 @@ def eth_tool_all_interfaces_handler():
                 res += "Could not run command: ethtool " + option + " " + interface
             res += "\n____________\n\n"
 
-        st, ethtool_interface = get_status_output("timeout 10s ethtool -S " + interface)
+        st, ethtool_interface = get_status_output("timeout 10s " + ethtool_command + " " + " -S " + interface)
         if (st != 0):
             ethtool_interface = "Could not run command: ethtool -S " + interface
 
@@ -530,7 +544,6 @@ def eth_tool_all_interfaces_handler():
         res += "<td><a href=ethtool_S/ethtool_S_" + filtered_interface_name + ">ethtool -S " + interface + "</a></td>"
 
         res += "\n\n--------------------------------------------------"
-        first = False
 
     return res
 
@@ -569,6 +582,7 @@ def cma_roce_handler(func):
         res += _device_res
         first = False
     return res
+
 
 #**********************************************************
 #        mlxdump Handler
@@ -734,10 +748,12 @@ def lspci_xxxvvv_handler():
         return res
     return "Exception was raised while running command."
 
-#**********************************************************
-#        mlxmcg -d <device> Handlers
 
-def mlxmcg_d_handler():
+
+#**********************************************************
+#        mst command -d <device> Handlers
+
+def mstcommand_d_handler(command):
     if not is_MFT_installed:
         return "MFT is not installed, please install MFT and try again."
     dev_st, all_devices = get_status_output("timeout 10s ls /dev/mst")
@@ -746,17 +762,20 @@ def mlxmcg_d_handler():
     devices = all_devices.split()
     if (len(devices) < 1):
         return "There are no devices"
-
-    mlxmcg = ""
+    
+    suffix = ""
+    if command == "mlxconfig":
+        suffix = " -e q"
+    command_result = ""
     for device in devices:
-        if (mlxmcg != ""):
-            mlxmcg += "\n\n-------------------------------------------------------------\n\n"
-        mlxmcg += "mlxmcg -d /dev/mst/" + device +"\n\n"
-        mlx_st, mlxmcg_device = get_status_output("timeout 10s mlxmcg -d /dev/mst/" + device)
+        if (command_result != ""):
+            command_result += "\n\n-------------------------------------------------------------\n\n"
+        command_result += " " + command + " -d /dev/mst/" + device + suffix + "\n\n"
+        mlx_st, command_result_device = get_status_output("timeout 10s " + command + " -d /dev/mst/" + device + suffix)
         if (mlx_st != 0):
-            mlxmcg_device = "Could not run: " + '"' + "mlxmcg -d /dev/mst/" + device + '"'
-        mlxmcg += mlxmcg_device
-    return mlxmcg
+            command_result_device = "Could not run: " + command + " -d /dev/mst/" + device + '"'
+        command_result += command_result_device
+    return command_result
 
 #**********************************************************
 #        mstregdump-func Handlers
@@ -891,8 +910,8 @@ def add_command_if_exists(command):
         result = show_pretty_gids_handler()
         status = 0
         print_err_flag = 0
-    elif (command == "eth_tool_all_interfaces"):
-        result = eth_tool_all_interfaces_handler()
+    elif (command == "ethtool_all_interfaces"):
+        result = ethtool_all_interfaces_handler()
         status = 0
         print_err_flag = 0
     elif (command == "modinfo"):
@@ -932,7 +951,11 @@ def add_command_if_exists(command):
         status = 0
         print_err_flag = 0
     elif (command == "mlxmcg -d"):
-        result = mlxmcg_d_handler()
+        result = mstcommand_d_handler('mlxmcg')
+        status = 0
+        print_err_flag = 0
+    elif (command == "mlxconfig_query"):
+        result = mstcommand_d_handler('mlxconfig')
         status = 0
         print_err_flag = 0
     elif ("mstregdump-func" in command):
@@ -1016,16 +1039,6 @@ def add_command_if_exists(command):
         if (status != 0):
             print_err_flag = 1
             result = "Could not run: " + '"' + "for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump noports ; done 2>/dev/null" + '"'
-    elif (command == "mlxconfig_query"):
-        status, result = get_status_output("timeout 10s mlxconfig query")
-        if (status != 0):
-            print_err_flag = 1
-            result = "Could not run: " + '"' + "mlxconfig query" + '"'
-        else:
-            if "Device #1:" in result:
-                result = "Device #1:" + result.split("Device #1:")[1]
-            else:
-                result = "No MST devices to perform mlxconfig query"
     elif "mst status" in command:
         status, result = get_status_output("timeout 10s " + command)
         if status != 0:
@@ -2473,7 +2486,7 @@ def lspci():
         card = card.split("]")[0]
         card = card.lower()
 
-        if (("-ib" in card) or ("pro" in card) or ("x-3" in card) or ("x3" in card) or ("x-4" in card) or ("x4" in card) or ("connectib" in card)):
+        if (("-ib" in card) or ("pro" in card) or ("x-3" in card) or ("x3" in card) or ("x-4" in card) or ("x4" in card) or ("x-5" in card) or ("x5" in card) or ("connectib" in card)):
             pci_devices[i]["desired_gen"] = 3.0
         else:
             if ("pcie 2.0" in card):
@@ -2489,7 +2502,7 @@ def lspci():
             pci_devices[i]["desired_payload_size"] = 256.0
             pci_devices[i]["desired_max_read_request"] = 512.0
         
-        if (("-ib" in card) or ("connectib" in card) or ("x4" in card) or ("x-4" in card)):
+        if (("-ib" in card) or ("connectib" in card) or ("x4" in card) or ("x-4" in card) or ("x-5" in card) or ("x5" in card)):
             pci_devices[i]["desired_width"] = 16.0
 
     if (no_ib_flag == False):
@@ -2870,9 +2883,9 @@ def html_write_paragraph(html, base, collection, dict, prev_parag_end):
             and ( (("fw_ini_dump" in collection[i]) and fw_ini_dump_is_string == False )
             or (("mlxdump" in collection[i]) and mlxdump_is_string == False)
             or (("mstregdump-func" in collection[i]) and mstreg_dump_is_string == False)
-            or (collection[i] == "eth_tool_all_interfaces") ) ):
+            or (collection[i] == "ethtool_all_interfaces") ) ):
             html.write("<p>")
-            if (collection[i] == "eth_tool_all_interfaces"):
+            if (collection[i] == "ethtool_all_interfaces"):
                 ethtool_content = dict[collection[i]]
                 ethtool_content = ethtool_content.split("\n")
                 ethtool_content_final = ""
