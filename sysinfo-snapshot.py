@@ -615,7 +615,7 @@ def add_mlxdump_links():
 
 def fw_ini_dump_handler():
     st, res = get_status_output(
-        "for interface in `lspci |grep Mellanox | awk '{print $1}'`; " + 
+        "for interface in `lspci | grep Mellanox | awk '{print $1}'`; " + 
         "do " +
             "mstflint -d $interface dc > " + path + file_name  + "/firmware/" + '"' + "mstflint_" + '"' + "$interface" + '"' + "_dc" + '"' + "; echo yes;"
               + "mstflint -d $interface q > " + path + file_name + "/firmware/" + '"' + "mstflint_" + '"' + "$interface" + '"' + "_q" + '"' + ";"
@@ -1143,7 +1143,7 @@ def ib_find_disabled_ports_handler(card, port):
     return res
 
 def calc_IP(MGID):
-    st, IP = get_status_output("ip=`echo " + MGID + " | awk ' { mgid=$1; n=split(mgid, a, "+'"'+":"+'"'+"); if (a[2] == "+'"'+"401b"+'"'+") {upper=strtonum("+'"'+"0x"+'"'+" a[n-1]); lower=strtonum("+'"'+"0x"+'"'+" a[n]); addr=lshift(upper,16)+lower; addr=or(addr,0xe0000000); a1=and(addr,0xff); addr=rshift(addr,8); a2=and(addr,0xff); addr=rshift(addr,8); a3=and(addr,0xff); addr=rshift(addr,8); a4=and(addr,0xff); printf("+'"'+"%u.%u.%u.%u"+'"'+", a4, a3, a2, a1); } else { printf ("+'"'+"<IPv6>"+'"'+"); }; }'`; echo $ip")
+    st, IP = get_status_output("ip=`echo " + MGID + " | awk ' { mgid=$1; n=split(mgid, a, "+'"'+":"+'"'+"); upper=strtonum("+'"'+"0x"+'"'+" a[n-1]); lower=strtonum("+'"'+"0x"+'"'+" a[n]); addr=lshift(upper,16)+lower; addr=or(addr,0xe0000000); a1=and(addr,0xff); addr=rshift(addr,8); a2=and(addr,0xff); addr=rshift(addr,8); a3=and(addr,0xff); addr=rshift(addr,8); a4=and(addr,0xff); printf("+'"'+"%u.%u.%u.%u"+'"'+", a4, a3, a2, a1); }'`; echo $ip")
     if (st == 0):
         return IP
     return "<N/A>"
@@ -1186,11 +1186,19 @@ def ib_mc_info_show_handler():
                 mlids_ip_dict[Mlid_val] = IP
                 mlids_count_dict[Mlid_val] = 1
             else:
-                mlids_ip_dict[Mlid_val] = "<N/A>"
+                mlids_ip_dict[Mlid_val] = IP
                 mlids_count_dict[Mlid_val] += 1
         elif "MGID" in saquery[index]:
             MGID_val = saquery[index].split('.')[-1]
-            IP = calc_IP(MGID_val)
+            try:
+                #ff12:401b:ffff::1::ff9c:1b7
+                ip_header = MGID_val.split(":")[1]
+                if ip_header == "401b":
+                    IP = calc_IP(MGID_val)
+                else:
+                    IP = MGID_val
+            except (ValueError, IndexError ) as e:
+                IP = "<N/A>"
         elif "NodeDescription" in saquery[index]:
             NodeDescription = saquery[index].split('.')[-1]
             if not NodeDescription in nodes_collection:
@@ -1206,7 +1214,7 @@ def ib_mc_info_show_handler():
         res += node.ljust(41, ' ')
         res += " --->  " + str(node_count)
         if (node_count > MAX_GROUPS):
-            res += "\t -- PERFORMANCE DROP WARNING --" 
+            res += "\t -- PERFORMANCE DROP WARNING --"
         res += "\n"
 
     res += "\n------------------------------------------------------\n"
