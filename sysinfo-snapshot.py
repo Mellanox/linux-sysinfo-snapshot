@@ -336,7 +336,7 @@ available_fabric_commands_collection = []
 
 
 
-internal_files_collection = ["/etc/opensm/partitions.conf", "/etc/opensm/opensm.conf", "/etc/infiniband/info", "/etc/infiniband/openib.conf", "/etc/modprobe.d/vxlan.conf", "/etc/security/limits.conf", "/boot/grub/grub.cfg", "/boot/grub/grub.conf", "/boot/grub/menu.lst", "/etc/default/grub", "/etc/host.conf", "/etc/hosts", "/etc/hosts.allow", "/etc/hosts.deny", "/etc/issue", "/etc/modprobe.conf", "/etc/ntp.conf", "/etc/resolv.conf", "/etc/sysctl.conf", "/etc/tuned.conf", "/etc/yum.conf", "/proc/cmdline", "/proc/cpuinfo", "/proc/devices", "/proc/diskstats", "/proc/dma", "/proc/interrupts", "/proc/meminfo", "/proc/modules", "/proc/mounts", "/proc/net/dev_mcast", "/proc/net/igmp", "/proc/partitions", "/proc/stat", "/proc/sys/net/ipv4/igmp_max_memberships", "/proc/sys/net/ipv4/igmp_max_msf", "/proc/uptime", "/proc/version", "/etc/rdma/rdma.conf", "/proc/net/softnet_stat", "/proc/buddyinfo", "/proc/zoneinfo", "/proc/slabinfo", "/proc/pagetypeinfo"]
+internal_files_collection = ["/sys/fs/cgroup/net_prio/net_prio.ifpriomap", "/etc/opensm/partitions.conf", "/etc/opensm/opensm.conf", "/etc/infiniband/info", "/etc/infiniband/openib.conf", "/etc/modprobe.d/vxlan.conf", "/etc/security/limits.conf", "/boot/grub/grub.cfg", "/boot/grub/grub.conf", "/boot/grub/menu.lst", "/etc/default/grub", "/etc/host.conf", "/etc/hosts", "/etc/hosts.allow", "/etc/hosts.deny", "/etc/issue", "/etc/modprobe.conf", "/etc/ntp.conf", "/etc/resolv.conf", "/etc/sysctl.conf", "/etc/tuned.conf", "/etc/yum.conf", "/proc/cmdline", "/proc/cpuinfo", "/proc/devices", "/proc/diskstats", "/proc/dma", "/proc/interrupts", "/proc/meminfo", "/proc/modules", "/proc/mounts", "/proc/net/dev_mcast", "/proc/net/igmp", "/proc/partitions", "/proc/stat", "/proc/sys/net/ipv4/igmp_max_memberships", "/proc/sys/net/ipv4/igmp_max_msf", "/proc/uptime", "/proc/version", "/etc/rdma/rdma.conf", "/proc/net/softnet_stat", "/proc/buddyinfo", "/proc/zoneinfo", "/proc/slabinfo", "/proc/pagetypeinfo"]
 
 if (cur_os == "debian"):
     internal_files_collection.extend(["/etc/network/interfaces"])
@@ -1808,7 +1808,14 @@ def arrange_internal_files_section():
                 add_internal_file_if_exists("/etc/modprobe.d/" + file)
                 if verbose_count == 2:
                     print("\t\t/etc/modprobe.d/" + file + " - end")
-    
+    if (os.path.exists("/proc/net/vlan/") == True):
+        for file in os.listdir("/proc/net/vlan/"):
+            if (os.path.isfile("/proc/net/vlan/"+file) == True):
+                if verbose_count == 2:
+                    print("\t\t/proc/net/vlan/" + file + " - start")
+                add_internal_file_if_exists("/proc/net/vlan/" + file)
+                if verbose_count == 2:
+                    print("\t\t/proc/net/vlan/" + file + " - end")
     if (os.path.exists("/sys/class/infiniband/") == True):
         for file in os.listdir("/sys/class/infiniband/"):
             if (os.path.isfile("/sys/class/infiniband/"+file) == False):
