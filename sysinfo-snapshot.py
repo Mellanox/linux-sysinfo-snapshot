@@ -78,7 +78,7 @@ signal.signal(signal.SIGINT, signal_handler)
 ###########################################################
 #        General Variables
 
-version = "3.2.4"
+version = "3.2.5"
 
 sys_argv = sys.argv
 len_argv = len(sys.argv)
@@ -210,6 +210,12 @@ pcie_flag = False
 # mtusb_flag can be converted to True by running the tool with --mtusb flag
 # If mtusb flag is true it runs "mst start" and then return it to the old status
 mtusb_flag = False
+
+# check_fw_flag = False, means not to add any check to adapter firmware if latest
+# check_fw_flag = True, means to  add any check to adapter firmware if latest
+# check_fw_flag can be converted to True by running the tool with --check_fw
+# If check_fw flag is true it runs online check for the latest fw for this psid
+check_fw_flag = False
 
 #no_ib_flag = False, means to add ib commands to the out file
 #no_ib_flag = True, means not to add ib commands to the out file
@@ -2276,6 +2282,7 @@ def show_usage():
       + "\n\t--no_ib \t\t- do not add server IB commands to the output."
       + "\n\t--json \t\t\t- add json file to the output."
       + "\n\t--pcie \t\t\t- add pcie commands/functions to the output."
+      + "\n\t--check_fw \t\t- check if the current adapter firmware is the latest version released, output in performance html file [Internet access is required]"
       + "\n\t--verbose\t\t- first verbosity level, available if option is provided only once, lists sections in process."
       + "\n\t\t\t\t  second verbosity level, available if option is provided twice, lists sections and commands in process.")
 
@@ -2465,11 +2472,11 @@ def ip_forwarding():
 pci_devices = []
 direct = False
 
-def lspci():
+def lspci(check_latest):
     global pci_devices
     global direct
     key = "PCI Configurations"
-
+    #lspci -d 15b3: - e.g 81:00.0 Ethernet controller: Mellanox Technologies MT27800 Family [ConnectX-5]
     st, cards_num = get_status_output("timeout 10s lspci -d 15b3: | wc -l")
     if (st != 0 or ("command not found" in cards_num) or represents_int(cards_num) == False):
         perf_status_dict[key]    = "OK"
@@ -2491,6 +2498,7 @@ def lspci():
     i = -1
     for card in mlnx_cards:
         i += 1
+        card_pci = card.split()[0]
         pci_devices.append({"status":"OK", "name":card, "current_fw":"", "psid":"", "desired_gen":3.0, "current_gen":3.0, "desired_speed":8.0, "current_speed":8.0, "desired_width":8.0, "current_width":8.0, "desired_payload_size":256.0, "current_payload_size":8.0, "desired_max_read_request":4096.0, "current_max_read_request":4096.0})
 
         if ( (not "[" in card) or (not "]" in card) ):
@@ -2520,18 +2528,24 @@ def lspci():
         if (("-ib" in card) or ("connectib" in card) or ("x4" in card) or ("x-4" in card) or ("x-5" in card) or ("x5" in card)):
             pci_devices[i]["desired_width"] = 16.0
 
-    if (no_ib_flag == False):
-        st, firmwares = get_status_output("for i in `lspci -d 15b3: | awk '{print $1}'`; do mstflint -d $i q; done | grep " + '"' + "FW Version" + '"')
-        if (st == 0):
-            firmwares = firmwares.splitlines()
-            if (len(mlnx_cards) == len(firmwares)):
-                pci_devices[i]["current_fw"] = (firmwares[i]).split()[-1]
-        st, psids = get_status_output("for i in `lspci -d 15b3: | awk '{print $1}'`; do mstflint -d $i q; done | grep PSID")
-        if (st == 0):
-            psids = psids.splitlines()
-            if (len(mlnx_cards) == len(psids)):
-                pci_devices[i]["psid"] = (psids[i]).split()[-1]
-
+        if (no_ib_flag == False):            
+            st, firmwares_query = get_status_output("mstflint -d " + card_pci + " q | grep  'FW Version\|'^PSID'' ")
+            if (st == 0):
+                #firmwares_query :-
+                #FW Version:            16.18.1000
+                #PSID:                  MT_0000000008
+                firmwares_query = firmwares_query.splitlines()
+                pci_devices[i]["current_fw"] = (firmwares_query[0]).split()[-1]
+                pci_devices[i]["psid"] = (firmwares_query[1]).split()[-1]
+                if check_latest:
+                    st, check_latest_fw = get_status_output("mlxfwmanager --online-query-psid " + pci_devices[i]["psid"] + " | grep -w FW" )
+                    if (st == 0):
+                        #     FW             14.20.1010
+                        check_latest_fw = check_latest_fw.splitlines()
+                        if check_latest_fw[0].split()[-1] != pci_devices[i]["current_fw"]:
+                            pci_devices[i]["status"] = "Warning"
+                            pci_devices[i]["current_fw"] = 'Warning the current Firmware- ' + pci_devices[i]["current_fw"] + ', is not latest - ' + check_latest_fw[0].split()[-1]
+         
     st, cards_xxx = get_status_output("timeout 10s lspci -d 15b3: -xxx | grep ^70")
     if (st != 0):
         perf_val_dict[key] = "command not found: lspci -d 15b3: -xxx | grep ^70"
@@ -2721,7 +2735,7 @@ def perform_checkings():
     if verbose_count == 2:
         print("\t\t\tirqbalance - end")
         print("\t\t\tlspci - start")
-    lspci()
+    lspci(check_fw_flag)
     if verbose_count == 2:
         print("\t\t\tlspci - end")
         print("\t\t\tamd - start")
@@ -3596,8 +3610,9 @@ def update_flags():
     global ibdiagnet_flag
     global mtusb_flag
     global perf_flag
-    global pcie_flag   
- 
+    global pcie_flag
+    global check_fw_flag
+
     fw_arg = ''
     perf_arg = ''
     i = 1
@@ -3608,6 +3623,7 @@ def update_flags():
     w = 1
     m = 1
     f = 1
+    s = 1
     index = 0
     for arg in sys.argv:
         if (arg == '-fw' or arg == '--firmware'):
@@ -3615,6 +3631,10 @@ def update_flags():
             fw_flag = True
             fw_arg = arg
             i += 1
+        if (arg == '--check_fw'):
+            confirm_valid_options(index)
+            check_fw_flag = True
+            s += 1
         if (arg == '--no_ib'):
             confirm_valid_options(index)
             no_ib_flag = True
@@ -3723,6 +3743,12 @@ def execute():
     if mtusb_flag:
         try:
             sys_argv.remove("--mtusb")
+            len_argv -= 1
+        except:
+            pass
+    if check_fw_flag:
+        try:
+            sys_argv.remove("--check_fw")
             len_argv -= 1
         except:
             pass
