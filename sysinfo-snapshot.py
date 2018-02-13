@@ -510,20 +510,15 @@ def ethtool_all_interfaces_handler():
     if (len(net_devices) > 0):
         get_status_output("mkdir " + path + file_name + "/ethtool_S")
         #invoke_command(['mkdir', path + file_name + "/ethtool_S"])
-
-    ethtool_command = "/opt/mellanox/ethtool/sbin/ethtool"
-    res = "The Running ethtool is - "
-    st, ethtool_version = get_status_output("timeout 10s /opt/mellanox/ethtool/sbin/ethtool --version")
+    ethtool_command = "/sbin/ethtool"
+    res = ""
+    st, ethtool_version = get_status_output("timeout 10 " + ethtool_command + " --version")
     if st != 0:
-        ethtool_command = "/sbin/ethtool"
-        st, ethtool_version = get_status_output("timeout 10s /sbin/ethtool  --version")
-        if st != 0:
-            return "Failed to run the command /sbin/ethtool"
-        #Output - ethtool version 4.8
-        version = ethtool_version.split()[2]
-        if (float(version) < 4.7):
-            res = ""
-            ethtool_version = "Warning - " + ethtool_version + ", it is older than 4.7 ! \nIt will not show the 25g generation speeds correctly, cause ethtool 4.6 and below do not support it."
+        return "Failed to run the command " + ethtool_command
+    #Output - ethtool version 4.8
+    version = ethtool_version.split()[2]
+    if (float(version) < 4.7):
+    ethtool_version = "Warning - " + ethtool_version + ", it is older than 4.7 ! \nIt will not show the 25g generation speeds correctly, cause ethtool 4.6 and below do not support it." 
 
     res += ethtool_version 
     options = ["", "-i", "-g", "-a", "-k", "-c", "-T", "--show-priv-flags", "-n", "-l", "-x"]
@@ -2480,7 +2475,7 @@ def lspci(check_latest):
     st, cards_num = get_status_output("timeout 10s lspci -d 15b3: | wc -l")
     if (st != 0 or ("command not found" in cards_num) or represents_int(cards_num) == False):
         perf_status_dict[key]    = "OK"
-        perf_val_dict[key]    = "bash: lspci: command not found"
+        perf_val_dict[key]    = " lspci: command not found"
         direct = True
         return
     elif (cards_num == "0"):
@@ -3777,7 +3772,7 @@ def confirm_root():
         print('Unable to distinguish user')
         sys.exit(1)
     if (user.strip() != 'root'):
-        print('Runing as a none root user\nPlease switch to root user (super user) and run again.\n')
+        print('Running as a none root user\nPlease switch to root user (super user) and run again.\n')
         show_usage()
         sys.exit(1)
 
