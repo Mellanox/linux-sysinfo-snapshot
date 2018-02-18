@@ -126,6 +126,7 @@ ibdiagnet_is_invoked = False
 # ibdiagnet_flag = False, means --ibdiagnet was not provided
 # ibdiagnet_flag = True, means --ibdiagnet was provided
 ibdiagnet_flag = False
+ibdiagnet_error = False
 
 # Runs ibswitches for a given card and port and returns it output and run status
 def get_ibswitches_output(card, port):
@@ -518,16 +519,16 @@ def ethtool_all_interfaces_handler():
     #Output - ethtool version 4.8
     version = ethtool_version.split()[2]
     if (float(version) < 4.7):
-    ethtool_version = "Warning - " + ethtool_version + ", it is older than 4.7 ! \nIt will not show the 25g generation speeds correctly, cause ethtool 4.6 and below do not support it." 
+        ethtool_version = "Warning - " + ethtool_version + ", it is older than 4.7 ! \nIt will not show the 25g generation speeds correctly, cause ethtool 4.6 and below do not support it." 
 
-    res += ethtool_version 
+    res += ethtool_version
     options = ["", "-i", "-g", "-a", "-k", "-c", "-T", "--show-priv-flags", "-n", "-l", "-x"]
     for interface in net_devices:
         res += "\n\n"
         for option in options:
             st, ethtool_interface = get_status_output("timeout 10s " + ethtool_command + " " + option + " " + interface)
             res += "ethtool " + option + " " + interface + "\n"
-            if (st == 0):    
+            if (st == 0):
                 res += ethtool_interface
             else:
                 res += "Could not run command: ethtool " + option + " " + interface
@@ -543,7 +544,6 @@ def ethtool_all_interfaces_handler():
         file.close()
         res += "ethtool -S " + interface + "\n"
         res += "<td><a href=ethtool_S/ethtool_S_" + filtered_interface_name + ">ethtool -S " + interface + "</a></td>"
-
         res += "\n\n--------------------------------------------------"
 
     return res
@@ -1286,8 +1286,8 @@ def ib_switches_FW_scan_handler(ibswitches_st, ibswitches, ibdiagnet_suffix):
         fw_version = "N/A"
         fw_build_id = "N/A"
         hw_dev_rev = "N/A"
-        if ibdiagnet_is_invoked:
-            tmp_st, row = get_status_output("awk '/START_NODES_INFO/,/END_NODES_INFO/' " + path + file_name + ibdiagnet_suffix + "/ibdiagnet/ibdiagnet2.db_csv | grep ^" + guid )
+        if ibdiagnet_is_invoked and not ibdiagnet_error:
+            tmp_st, row = get_status_output("awk '/START_NODES_INFO/,/END_NODES_INFO/' " + path + file_name + "/"+ ibdiagnet_suffix + "/ibdiagnet/ibdiagnet2.db_csv | grep ^" + guid )
             splt_row = re.split("[" + re.escape(",\n") + "]", row)
             if ( 1 < len(splt_row) and (represents_Int_base_16(splt_row[1]) == True) ):  
                 device_id = str(int(splt_row[1], 16))
@@ -1463,11 +1463,14 @@ def sm_version_handler():
 
 def ibdiagnet_handler(card, port, ibdiagnet_suffix):
     global ibdiagnet_res
+    global ibdiagnet_error
     suffix = "_" + card + "_" + port
     if (ibdiagnet_is_invoked == False):
-        if (os.path.exists(path + file_name + ibdiagnet_suffix +"/ibdiagnet") == False):
-            os.mkdir(path + file_name + ibdiagnet_suffix + "/ibdiagnet")
-        st, ibdiagnet_res = get_status_output("timeout 10s ibdiagnet -i "+ card +" -p "+ port +" -o " + path + file_name + ibdiagnet_suffix + "/ibdiagnet")
+        if (os.path.exists(path + file_name + "/" + ibdiagnet_suffix +"/ibdiagnet") == False):
+            os.mkdir(path + file_name + "/" + ibdiagnet_suffix + "/ibdiagnet")
+        st, ibdiagnet_res = get_status_output("timeout 10s ibdiagnet -i "+ card +" -p "+ port +" -o " + path + file_name + "/" + ibdiagnet_suffix + "/ibdiagnet")
+        if st != 0:
+            ibdiagnet_error = True
 
 def clean_ibnodes(ibnodes, start_string):
     res = ""
@@ -1517,7 +1520,7 @@ def add_fabric_multi_sub_command_if_exists(command):
         for port_obj in active_subnets[card]:
             index += 1
             port = port_obj["port_num"]
-            ibdiagnet_suffix = "_" + card +"_" + port
+            ibdiagnet_suffix = "ibdiagnet_" + card +"_" + port
             suffix = " for the subnet running though card " + card +" port " + port
             result +=  command + suffix + "\n\n"
 
@@ -2807,12 +2810,15 @@ def initialize_html(html_flag):
     # Add no_ib and ibdiagnet alerts status
     if no_ib_flag == True:
         html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: IB commands are NOT included, hence e.g. NO fabric commands section (--no_ib flag was provided)</font></p>")
-        if ibdiagnet_flag:
+        if ibdiagnet_flag:    
             html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: --ibdiagnet flag was provided, it is ineffective since --no_ib flag was provided</font></p>")
     else:
         html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: IB commands are included. (--no_ib flag was not provided)</font></p>")
         if ibdiagnet_flag:
-            html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: ibdiagnet command is included. (--ibdiagnet flag was provided)</font></p>")
+            if ibdiagnet_error:
+                html.write("<p><font color="+'"'+"red"+'"'+" size="+'"'+"3"+'"'+">Error: ibdiagnet command is included. But it ouput may not be displayed correctly for all subnets</font></p>")
+            else:
+                html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: ibdiagnet command is included. (--ibdiagnet flag was provided)</font></p>")
         else:
             html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: ibdiagnet command is NOT included. (--ibdiagnet flag was not provided)</font></p>")
 
@@ -3466,6 +3472,9 @@ def load_modules():
 
 # Create the output tar
 def generate_output():
+
+    global ibdiagnet_error
+
     validate_not_file()
     print_in_process()
     confirm_mlnx_cards()
@@ -3524,8 +3533,11 @@ def generate_output():
         for card in active_subnets:
             for port_obj in active_subnets[card]:
                 port = port_obj["port_num"]
-                ibdiagnet_suffix = "_" + card + "_" + port
-                get_status_output("mkdir " + path + file_name + ibdiagnet_suffix)
+                ibdiagnet_suffix = "ibdiagnet_" + card + "_" + port
+                if ibdiagnet_flag:
+                    st, mkdir_output = get_status_output("mkdir " + path + file_name  + "/" + ibdiagnet_suffix)
+                    if st != 0:
+                        ibdiagnet_error = True
     if verbose_flag:
         print("\tDiscovering installed IB cards, ports and subnets has ended")
     
