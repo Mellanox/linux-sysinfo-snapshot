@@ -2696,7 +2696,7 @@ def bw_and_lat():
         if device in show_gids:
             try:
                 data = show_gids.split(device)[-1].splitlines()[0].strip().split()
-                if len(data)>5:
+                if len(data)>=5:
                     index = data[1]
                     bandwidth[device] += "\n\n##################################################\n\n"
                     cmd = "timeout 10s ib_write_bw -d " + device + " -x" + index + " >/dev/null & sleep 2; timeout 10s ib_write_bw -d " + device + " -x" + index + " localhost"
