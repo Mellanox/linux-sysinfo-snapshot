@@ -600,8 +600,9 @@ def mlxdump_handler():
 
     options = ["fsdump"]
     for device in devices:
-        for option in options:
-            st, res = get_status_output("timeout 30s mlxdump -d /dev/mst/" + device + " " + option + " > " + path + file_name + "/firmware/mlxdump_" + device.replace(":", "").replace(".", "") + "_" + option.replace("-", ""))
+        if not "mtusb" in device:
+            for option in options:
+                st, res = get_status_output("timeout 30s mlxdump -d /dev/mst/" + device + " " + option + " > " + path + file_name + "/firmware/mlxdump_" + device.replace(":", "").replace(".", "") + "_" + option.replace("-", ""))
     return "Links"
 
 def add_mlxdump_links():
@@ -615,25 +616,47 @@ def add_mlxdump_links():
 #        fw_ini_dump Handlers
 
 def fw_ini_dump_handler():
-    st, res = get_status_output(
-        "for interface in `lspci | grep Mellanox | awk '{print $1}'`; " + 
-        "do " +
-            "mstflint -d $interface dc > " + path + file_name  + "/firmware/" + '"' + "mstflint_" + '"' + "$interface" + '"' + "_dc" + '"' + "; echo yes;"
-              + "mstflint -d $interface q > " + path + file_name + "/firmware/" + '"' + "mstflint_" + '"' + "$interface" + '"' + "_q" + '"' + ";"
-        "done")
+    #02:00.0 Ethernet controller: Mellanox Technologies MT27700 Family [ConnectX-4]
+    st, lspci_devices = get_status_output("timeout 10s lspci | grep Mellanox ")
+    if st != 0:
+        return "NULL_1"
+    lspci_devices = lspci_devices.splitlines()
+    if (len(lspci_devices) < 1):
+        return "NULL_1"
 
-    st2 = 0
-    res2 = ""
+    res = 0
+    for device in lspci_devices:
+        device = device.split()[0]
+        st, res_output = get_status_output("timeout 30s flint -d " + device + " q > " + path + file_name + "/firmware/flint_" + device.replace(":", "").replace(".", "") + "_q")
+        if st != 0:
+            res += st
+        st, res_output = get_status_output("timeout 30s flint -d " + device + " dc > " + path + file_name + "/firmware/flint_" + device.replace(":", "").replace(".", "") + "_dc")
+        if st != 0:
+            res += st
+
     if mtusb_flag:
         if not is_MFT_installed:
             return "MFT is not installed, please install MFT and try again."
         else:
-            st2, res2 = get_status_output("for i2c in `mst status | grep ^/ | grep USB | awk '{print $1}'`; do echo yes; interface=${i2c##*/}; flint -d $i2c q > " + path + file_name + "/firmware/" + '"' + "flint_" + '"' + "$interface" + '"' + "_q" + '"' + "; flint -d $i2c dc > " + path + file_name + "/firmware/" + '"' + "flint_" + '"' + "$interface" + '"' + "_dc" + '"' + "; done")
-
-    if st == 0 and res == "" and st2 == 0 and res2 == "":
-        return "NULL_1"
-    if st == 0 or (st2 == 0 and mtusb_flag):
+            #/dev/mst/mtusb-1                 - USB to I2C adapter as I2C master
+            dev_st, mst_devices = get_status_output("timeout 10s mst status | grep ^/ | grep USB")
+            if (dev_st != 0):
+                return "Failed to run:  mst status | grep ^/ | grep USB"
+            devices = mst_devices.splitlines()
+            if (len(devices) < 1):
+                return "There are no mst devices"
+            for device in devices:
+                device = device.split()[0]
+                dev_path = path + file_name + "/firmware/flint_" + device.split('/')[3]
+                st2, res_output = get_status_output("timeout 120s flint -d " + device + " q > " + dev_path + "_q")
+                if st2 != 0:
+                    res += st2
+                st2, res_output = get_status_output("timeout 120s flint -d " + device + " dc > " + dev_path + "_dc")
+                if st2 != 0:
+                    res += st2
+    if res == 0:
         return "yes"
+
     return "NULL_2"
 
 def add_fw_ini_dump_links():
@@ -920,15 +943,19 @@ def add_command_if_exists(command):
         status = 0
         print_err_flag = 0
     elif ("fw_ini_dump" in command):
-        result = fw_ini_dump_handler()
-        if (result == "NULL_1"):
-            result = "There are no Mellanox cards."
-        elif (result == "NULL_2"):
-            result = "Exception was raised while running the command"
-        elif (result == "yes"):
-            result = add_fw_ini_dump_links()
-            global fw_ini_dump_is_string
+        global fw_ini_dump_is_string
+        # NULL_1 - no mlx devices, NULL_2 not all devices were quered, yes - all commands invoked correctly 
+        fw_output = fw_ini_dump_handler()
+        if fw_output == "NULL_1":
+            result = fw_output
+        elif fw_output == "NULL_2":
+            result = "Warning - not all mst devices commands were successfully finished \n\n"
+            result += add_fw_ini_dump_links()
             fw_ini_dump_is_string = False
+        else:
+            result = add_fw_ini_dump_links()
+            fw_ini_dump_is_string = False
+
         status = 0
         print_err_flag = 0
     elif (command == "ibdev2pcidev"):
