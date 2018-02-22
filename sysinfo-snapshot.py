@@ -636,25 +636,22 @@ def fw_ini_dump_handler():
             res += st
 
     if mtusb_flag:
-        if not is_MFT_installed:
-            return "MFT is not installed, please install MFT and try again."
-        else:
-            #/dev/mst/mtusb-1                 - USB to I2C adapter as I2C master
-            dev_st, mst_devices = get_status_output("timeout 10s mst status | grep ^/ | grep USB")
-            if (dev_st != 0):
-                return "Failed to run:  mst status | grep ^/ | grep USB"
-            devices = mst_devices.splitlines()
-            if (len(devices) < 1):
-                return "There are no mst devices"
-            for device in devices:
-                device = device.split()[0]
-                dev_path = path + file_name + "/firmware/flint_" + device.split('/')[3]
-                st2, res_output = get_status_output("timeout 120s flint -d " + device + " q > " + dev_path + "_q")
-                if st2 != 0:
-                    res += st2
-                st2, res_output = get_status_output("timeout 120s flint -d " + device + " dc > " + dev_path + "_dc")
-                if st2 != 0:
-                    res += st2
+        #/dev/mst/mtusb-1                 - USB to I2C adapter as I2C master
+        dev_st, mst_devices = get_status_output("timeout 10s mst status | grep ^/ | grep USB")
+        if (dev_st != 0):
+            return "Failed to run:  mst status | grep ^/ | grep USB"
+        devices = mst_devices.splitlines()
+        if (len(devices) < 1):
+            return "There are no mst devices"
+        for device in devices:
+            device = device.split()[0]
+            dev_path = path + file_name + "/firmware/flint_" + device.split('/')[3]
+            st2, res_output = get_status_output("timeout 120s flint -d " + device + " q > " + dev_path + "_q")
+            if st2 != 0:
+                res += st2
+            st2, res_output = get_status_output("timeout 120s flint -d " + device + " dc > " + dev_path + "_dc")
+            if st2 != 0:
+                res += st2
     if res == 0:
         return "yes"
 
@@ -945,18 +942,20 @@ def add_command_if_exists(command):
         print_err_flag = 0
     elif ("fw_ini_dump" in command):
         global fw_ini_dump_is_string
-        # NULL_1 - no mlx devices, NULL_2 not all devices were quered, yes - all commands invoked correctly 
-        fw_output = fw_ini_dump_handler()
-        if fw_output == "NULL_1":
-            result = fw_output
-        elif fw_output == "NULL_2":
-            result = "Warning - not all mst devices commands were successfully finished \n\n"
-            result += add_fw_ini_dump_links()
-            fw_ini_dump_is_string = False
+        if not is_MFT_installed:
+            result = "MFT is not installed, please install MFT and try again."
         else:
-            result = add_fw_ini_dump_links()
-            fw_ini_dump_is_string = False
-
+            # NULL_1 - no mlx devices, NULL_2 not all devices were quered, yes - all commands invoked correctly 
+            fw_output = fw_ini_dump_handler()
+            if fw_output == "NULL_1":
+                result = "There are no Mellnaox devices"
+            elif fw_output == "NULL_2":
+                result = "Warning - not all mst devices commands were successfully finished \n\n"
+                result += add_fw_ini_dump_links()
+                fw_ini_dump_is_string = False
+            else:
+                result = add_fw_ini_dump_links()
+                fw_ini_dump_is_string = False
         status = 0
         print_err_flag = 0
     elif (command == "ibdev2pcidev"):
