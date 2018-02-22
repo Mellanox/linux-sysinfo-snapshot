@@ -16,6 +16,7 @@ import time
 import signal
 import shutil
 import platform
+from distutils.version import LooseVersion
 
 try:
     import json
@@ -24,7 +25,7 @@ except ImportError:
     json_found = False
 
 ###########################################################
-#        Get Status Ouptut 
+#        Get Status Ouptut
 # (replacement old the depreciated call st, res = get_status_output("..")
 
 def standarize_str(tmp):
@@ -1083,11 +1084,11 @@ def add_command_if_exists(command):
         if (status != 0 and not command.startswith("service")):
             if not (iscsiadm_st == 0 and command.startswith("iscsiadm")):
                 result = "Could not run: " + '"' + command + '"'
-    
+
     # if iscsiadm --version command exists, add all isciadm commands to the available ones
     if (iscsiadm_st == 0 and command.startswith("iscsiadm")):
         status = 0
-    
+
     # add command to server commands dictionaty only if exists
     if ((status == 0) or (command.startswith("service"))):
         server_commands_dict[command] = result
@@ -1622,8 +1623,12 @@ def add_internal_file_if_exists(file_full_path):
 def add_ext_file_handler(field_name, fil_name, command_output):
     if ( fil_name != "pkglist" and (not "erformance" in fil_name) and (not "sr-iov" in fil_name) ):
         f = open(path+file_name+"/"+fil_name, 'w')
-        f.write(command_output)
+        if sys.version_info[0] == 2:
+            f.write(command_output)
+        elif sys.version_info[0] == 3:
+            f.write(command_output.encode('ascii', 'ignore').decode("utf-8"))
         f.close()
+
     if not ("mlnx_tune" in field_name):
         external_files_dict[field_name] = "<td><a href=" + fil_name + ">" + field_name + "</a></td>"
         available_external_files_collection.append([field_name, fil_name])
@@ -2549,28 +2554,27 @@ def lspci(check_latest):
             pci_devices[i]["desired_speed"] = 5.0
             pci_devices[i]["desired_payload_size"] = 256.0
             pci_devices[i]["desired_max_read_request"] = 512.0
-        
+
         if (("-ib" in card) or ("connectib" in card) or ("x4" in card) or ("x-4" in card) or ("x-5" in card) or ("x5" in card)):
             pci_devices[i]["desired_width"] = 16.0
 
-        if (no_ib_flag == False):            
-            st, firmwares_query = get_status_output("mstflint -d " + card_pci + " q | grep  'FW Version\|'^PSID'' ")
-            if (st == 0):
-                #firmwares_query :-
-                #FW Version:            16.18.1000
-                #PSID:                  MT_0000000008
-                firmwares_query = firmwares_query.splitlines()
-                pci_devices[i]["current_fw"] = (firmwares_query[0]).split()[-1]
-                pci_devices[i]["psid"] = (firmwares_query[1]).split()[-1]
-                if check_latest:
-                    st, check_latest_fw = get_status_output("mlxfwmanager --online-query-psid " + pci_devices[i]["psid"] + " | grep -w FW" )
-                    if (st == 0):
-                        #     FW             14.20.1010
-                        check_latest_fw = check_latest_fw.splitlines()
-                        if check_latest_fw[0].split()[-1] != pci_devices[i]["current_fw"]:
-                            pci_devices[i]["status"] = "Warning"
-                            pci_devices[i]["current_fw"] = 'Warning the current Firmware- ' + pci_devices[i]["current_fw"] + ', is not latest - ' + check_latest_fw[0].split()[-1]
-         
+        st, firmwares_query = get_status_output("mstflint -d " + card_pci + " q | grep  'FW Version\|'^PSID'' ")
+        if (st == 0):
+            #firmwares_query :-
+            #FW Version:            16.18.1000
+            #PSID:                  MT_0000000008
+            firmwares_query = firmwares_query.splitlines()
+            pci_devices[i]["current_fw"] = (firmwares_query[0]).split()[-1]
+            pci_devices[i]["psid"] = (firmwares_query[1]).split()[-1]
+            if check_latest:
+                st, check_latest_fw = get_status_output("mlxfwmanager --online-query-psid " + pci_devices[i]["psid"] + " | grep -w FW" )
+                if (st == 0):
+                    #     FW             14.20.1010
+                    check_latest_fw = check_latest_fw.splitlines() 
+                    if LooseVersion(check_latest_fw[0].split()[-1] ) > LooseVersion(pci_devices[i]["current_fw"]):
+                        pci_devices[i]["status"] = "Warning"
+                        pci_devices[i]["current_fw"] = 'Warning the current Firmware- ' + pci_devices[i]["current_fw"] + ', is not latest - ' + check_latest_fw[0].split()[-1]
+
     st, cards_xxx = get_status_output("timeout 10s lspci -d 15b3: -xxx | grep ^70")
     if (st != 0):
         perf_val_dict[key] = "command not found: lspci -d 15b3: -xxx | grep ^70"
