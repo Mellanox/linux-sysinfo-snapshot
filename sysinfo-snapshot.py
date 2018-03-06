@@ -352,7 +352,7 @@ if (cur_os == "debian"):
 available_internal_files_collection = []
 
 # [field_name, file_name to cat]
-external_files_collection = [["kernel config", "/boot/config-$(uname -r)"], ["config.gz", "/proc/config.gz"], ["dmesg", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["syslog", "/var/log/"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR-IOV", ""]]
+external_files_collection = [["kernel config", "/boot/config-$(uname -r)"], ["config.gz", "/proc/config.gz"], ["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["syslog", "/var/log/"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR-IOV", ""]]
 
 available_external_files_collection = []
 
@@ -1738,7 +1738,10 @@ def add_external_file_if_exists(field_name, curr_path):
     else:    
         status, command_output = get_status_output("timeout 10s " + field_name)
         if (status == 0):
-            add_ext_file_handler(field_name, field_name, command_output)
+            if "dmesg" in field_name:
+                add_ext_file_handler(field_name, curr_path, command_output)
+            else:
+                add_ext_file_handler(field_name, field_name, command_output)
         else:
             err_flag = 1
             err_command += field_name
