@@ -79,7 +79,7 @@ signal.signal(signal.SIGINT, signal_handler)
 ###########################################################
 #        General Variables
 
-version = "3.2.5"
+version = "3.2.6"
 
 sys_argv = sys.argv
 len_argv = len(sys.argv)
@@ -658,13 +658,13 @@ def fw_ini_dump_handler():
     return "NULL_2"
 
 def add_fw_ini_dump_links():
-    file_link = {}
+    file_link = []
     for file in os.listdir(path + file_name + "/firmware"):
         if (file.startswith("mstflint") or file.startswith("flint")):
             #filtered_file_name = file.translate(None, ':.')
             filtered_file_name = file.replace(":", "").replace(".", "")
             os.rename(path+file_name+"/firmware/"+file, path+file_name+"/firmware/"+filtered_file_name)
-            file_link[file] = "<td><a href=firmware/" + filtered_file_name + ">" + file + "</a></td>"
+            file_link.append("<td><a href=firmware/" + filtered_file_name + ">" + file + "</a></td>")
     return file_link
 
 #**********************************************************
@@ -950,8 +950,8 @@ def add_command_if_exists(command):
             if fw_output == "NULL_1":
                 result = "There are no Mellnaox devices"
             elif fw_output == "NULL_2":
-                result = "Warning - not all mst devices commands were successfully finished \n\n"
-                result += add_fw_ini_dump_links()
+                result = add_fw_ini_dump_links()
+                result.insert(0, "Warning - not all fw ini dump commands were successfully finished \n\n")
                 fw_ini_dump_is_string = False
             else:
                 result = add_fw_ini_dump_links()
@@ -2958,6 +2958,10 @@ def html_write_paragraph(html, base, collection, dict, prev_parag_end):
                     else:
                         ethtool_content_final += line + "\n"
                 html.write(ethtool_content_final)
+            elif (collection[i] == "fw_ini_dump"):
+                for value in server_commands_dict[collection[i]]:
+                    html.write(value)
+                    html.write("&nbsp;&nbsp;&nbsp;&nbsp;")
             else:
                 for key, value in server_commands_dict[collection[i]].items():
                     html.write(value)
