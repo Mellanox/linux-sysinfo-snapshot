@@ -1064,38 +1064,40 @@ def add_command_if_exists(command):
         if (status == 0):    
             if (is_ib == 0):
                 status=0
-                print_err_flag=0
+                print_err_flag = 0
             else:
                 print_err_flag = 1
                 status = 1
         else:
             status = 1
             print_err_flag = 1
-    elif (command == "teamdctl_state"):
-        status, result = get_status_output("for interface in `ls /sys/class/net/` ; do teamdctl $interface state ; done 2>/dev/null")
+    elif ( "teamdctl" in command ):
+        print_err_flag = 0
+        result = ""
+        #e.g ip link ls type team #19: team0.100: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT qlen 1000
+        status, ip_link_output = get_status_output("ip link ls type team")
         if (status != 0):
             print_err_flag = 1
-            result = "Could not run: " + '"' + "for interface in `ls /sys/class/net/` ; do teamdctl $interface state ; done 2>/dev/null" + '"'
-    elif (command == "teamdctl_state_view"):
-        status, result = get_status_output("for interface in `ls /sys/class/net/` ; do teamdctl $interface state view ; done 2>/dev/null")
-        if (status != 0):
-            print_err_flag = 1
-            result = "Could not run: " + '"' + "for interface in `ls /sys/class/net/` ; do teamdctl $interface state view ; done 2>/dev/null" + '"'
-    elif (command == "teamdctl_config_dump"):
-        status, result = get_status_output("for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump ; done 2>/dev/null")
-        if (status != 0):
-            print_err_flag = 1
-            result = "Could not run: " + '"' + "for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump ; done 2>/dev/null" + '"'
-    elif (command == "teamdctl_config_dump_actual"):
-        status, result = get_status_output("for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump actual ; done 2>/dev/null")
-        if (status != 0):
-            print_err_flag = 1
-            result = "Could not run: " + '"' + "for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump actual ; done 2>/dev/null" + '"'
-    elif (command == "teamdctl_config_dump_noports"):
-        status, result = get_status_output("for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump noports ; done 2>/dev/null")
-        if (status != 0):
-            print_err_flag = 1
-            result = "Could not run: " + '"' + "for interface in `ls /sys/class/net/` ; do teamdctl $interface config dump noports ; done 2>/dev/null" + '"'
+            result = "Could not run: " + '"' + "ip link ls type team" + '"'
+        
+        team_interfaces = re.findall(r'.*?\:(.*)\: <.*',ip_link_output)
+        if team_interfaces:
+            for team in team_interfaces:
+                run_command = "";
+                if (command == "teamdctl_state"):
+                    run_command = "teamdctl " + team + " state"
+                elif (command == "teamdctl_state_view"):
+                    run_command = "teamdctl " + team + " state view"
+                elif (command == "teamdctl_config_dump"):
+                    run_command = "teamdctl " + team + " config dump "
+                elif (command == "teamdctl_config_dump_actual"):
+                    run_command = "teamdctl " + team + " config dump actual "
+                elif (command == "teamdctl_config_dump_noports"):
+                    run_command = "teamdctl " + team + " config dump noports"
+                status, teamdctl_result = get_status_output(run_command)
+                if (status != 0):
+                    teamdctl_result = "Could not run: " + '"' + run_command + '"'
+                result += teamdctl_result + '\n\n'
     elif "mst status" in command:
         status, result = get_status_output("timeout 10s " + command)
         if status != 0:
