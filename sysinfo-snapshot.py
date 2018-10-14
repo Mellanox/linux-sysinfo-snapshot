@@ -21,7 +21,6 @@ import argparse
 
 from distutils.version import LooseVersion
 
-
 try:
     import json
     json_found = True
@@ -44,7 +43,7 @@ def standarize_str(tmp):
     if sys.version_info[0] == 2:
         return tmp.strip()
     elif sys.version_info[0] == 3:
-        return str(tmp.strip(),'utf-8')
+        return tmp.strip().encode('ascii', 'ignore').decode("utf-8")
     else:
         return tmp.strip()
 
@@ -104,7 +103,7 @@ active_subnets = {}
 #installed_cards_ports --> device_name
 #                       --> port
 installed_cards_ports = {}
-
+pf_devices = []
 config_dict = {}
 
 json_flag = False
@@ -247,7 +246,7 @@ fw_ini_dump_is_string = True
 mstreg_dump_is_string = True
 
 sta, date_cmd = get_status_output("timeout 10s date")
-sta, date_file = get_status_output("timeout 10s echo $(date '+%Y%m%d-%H%M')")
+sta, date_file = get_status_output("timeout 10s echo $(date '+%Y%m%d-%H%M%S')")
 
 st_saquery = 1
 
@@ -266,6 +265,52 @@ def is_command_allowed(config_key):
             return True
     return True
 
+def update_net_devices():
+    global pf_devices
+
+    if not sys_class_net_exists:
+        return "No Net Devices - The path /sys/class/net does not exist"
+
+    st, lspci_devices = get_status_output("timeout 10s lspci | grep Mellanox")
+    if (st != 0):
+        return "Failed to run the command lspci | grep Mellanox"
+
+    mlx_pci_devices = []
+    lspci_devices = lspci_devices.splitlines()
+    for line in lspci_devices:
+        device_pci = line.split()
+        # e.g 81:00.0 Infiniband controller: Mellanox Technologies MT27800 Family [ConnectX-5]
+        mlx_pci_devices.append(device_pci[0])
+
+    net_devices = []
+    st, all_interfaces = get_status_output("timeout 10s ls -la /sys/class/net")
+    if (st != 0):
+        return "Failed to run the command ls -la /sys/class/net"
+
+
+    for device in mlx_pci_devices:
+        # e.g lrwxrwxrwx  1 root root 0 Oct 26 15:51 ens11f0 -> ../../devices/pci0000:80/0000:80:03.0/0000:81:00.0/net/ens11f0
+        match = re.findall(device + '\/net\/(\w+)',all_interfaces)
+        if match:
+            for interface in match:
+                net_devices.append(interface)
+
+    if "lo" in net_devices:
+        try:
+            net_devices.remove("lo")
+        except:
+            pass
+    if "bonding_masters" in net_devices:
+        try:
+            net_devices.remove("bonding_masters")
+        except:
+            pass
+    if "bond0" in net_devices:
+        try:
+            net_devices.remove("bond0")
+        except:
+            pass
+    pf_devices = net_devices
 
 ###########################################################
 #        OS General Variables & Confirmation
@@ -279,7 +324,7 @@ os_st, cur_os = get_status_output("timeout 10s rpm --eval %{_vendor}")
 
 def decide():
     print("Hence running sysinfo-snapshot may throw an exception or produce an unexpected output.")
-    sys.stdout.write("Continue running sysinfo-snapshot (y/n)? ")
+    print("Continue running sysinfo-snapshot (y/n)? ")
     decision_ch = sys.stdin.read(1).lower()
     if (decision_ch == 'y'):
         cur_os = "redhat"
@@ -291,7 +336,7 @@ def decide():
 
 if (os_st == 0):
     if (cur_os not in supported_os_collection):
-        print("Operating system with vendor " + cur_os + " is not tested.")
+        print("Operating system with vendor " + cur_os + " is not tested in this Linux sysinfo snapshot.")
         decide()
 else:
     os_st, o_systems = get_status_output("timeout 10s cat /etc/redhat-release")
@@ -333,27 +378,37 @@ sriov_internal_files_dict = {}
 
 perf_version = "1.0.1"
 
-perf_setting_collection = ["IRQ Affinity", "Core Frequency", "Hyper Threading", "IP Forwarding", "AMD", "Memory Allocation", "PCI Configurations", "Bandwidth", "Latency"]
+perf_setting_collection = ["IRQ Affinity", "Core Frequency", "Hyper Threading", "IP Forwarding", "AMD", "Memory Allocation", "PCI Configurations", "Perf Samples", "Bandwidth", "Latency"]
 eth_setting_collection = ["IP Forwarding"]
-ib_setting_collection = ["Bandwidth", "Latency"]
-setting_without_status = ["IP Forwarding", "Bandwidth", "Latency"]
+ib_setting_collection = ["Bandwidth", "Latency", "Perf Samples"]
+setting_without_status = ["IP Forwarding", "Bandwidth", "Latency", "Perf Samples"]
 not_available = "N/A"
 not_present = "Not Present"
 present = "Present"
 perf_status_dict = {}
 perf_val_dict = {}
 perf_external_files_collection = [["mlnx_tune -r", "mlnx_tune_r"]]
+perf_samples = {}
+bandwidth = {}
+latency = {}
 
 ###########################################################
 #        HTML Handlers And Global Variables
 
-fw_collection = ["itrace", "mlxmcg -d", "fw_ini_dump", "mlxdump"]
+fw_collection = ["fwtrace", "mlxmcg -d", "fw_ini_dump", "mlxdump"]
 
 pcie_collection = ["lspci -vvvxxxxx"]
 
 ib_collection = []
 
-commands_collection = ["ip -s link show", "rpm -qa --last", "ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "itrace", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", "df -lh", "/opt/mellanox/ethtool/sbin/ethtool --version", "/sbin/ethtool --version", "ethtool_all_interfaces", "fdisk -l", "fw_ini_dump", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", "initctl list", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod", "lspci", "lspci -tv", "lspci_xxxvvv", "lspci -vvvxxxxx", "mount", "mstregdump-func", "netstat -anp", "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info", "ps -eLo", "ip route show table all", "service --status-all", "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all", "sysctl -a", "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname -a", "uptime", "yy_MLX_modules_parameters", "yy_IB_modules_parameters", "zz_proc_net_bonding_files", "zz_sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "mlxcables --DDM/--read_all_regs", "ip addr show", "ip -6 addr show", "ip link show", "ip route show", "ip -6 route show", "modinfo", "show_pretty_gids", "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status"]
+commands_collection = ["ip -s link show", "rpm -qa --last", "ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "fwtrace", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", \
+                        "df -lh", "/opt/mellanox/ethtool/sbin/ethtool --version", "/sbin/ethtool --version", "ethtool_all_interfaces", "fdisk -l", "fw_ini_dump", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", \
+                        "initctl list", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod", "lspci", "lspci -tv", "lspci_xxxvvv", "lspci -vvvxxxxx", \
+                        "mount", "mstregdump-func", "netstat -anp", "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info", "ps -eLo", "ip route show table all", "service --status-all", \
+                        "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all", "sysctl -a", "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname -a", "uptime", \
+                        "yy_MLX_modules_parameters", "yy_IB_modules_parameters", "zz_proc_net_bonding_files", "zz_sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", \
+                        "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "mlxcables --DDM/--read_all_regs", "ip addr show", "ip -6 addr show", "ip link show", "ip route show", "ip -6 route show", "modinfo", "show_pretty_gids", \
+                        "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status", "mlxlink_query", "mlnx_qos_handler"]
 
 if (cur_os != "debian"):
     commands_collection.extend(["chkconfig --list | sort"])
@@ -490,53 +545,10 @@ def show_pretty_gids_handler():
 #**********************************************************
 #        ethtool_all_interfaces Handlers
 
-pf_devices = []
-
 def ethtool_all_interfaces_handler():
-    if not sys_class_net_exists:
-        return "No Net Devices - The path /sys/class/net does not exist"
-
-    st, lspci_devices = get_status_output("timeout 10s lspci | grep Mellanox")
-    if (st != 0):
-        return "Failed to run the command lspci | grep Mellanox"
-
-    mlx_pci_devices = []
-    lspci_devices = lspci_devices.splitlines()
-    for line in lspci_devices:
-        device_pci = line.split()
-        # e.g 81:00.0 Infiniband controller: Mellanox Technologies MT27800 Family [ConnectX-5]
-        mlx_pci_devices.append(device_pci[0])
-
-    net_devices = []
-    st, all_interfaces = get_status_output("timeout 10s ls -la /sys/class/net")
-    if (st != 0):
-        return "Failed to run the command ls -la /sys/class/net"
-
-
-    for device in mlx_pci_devices:
-        # e.g lrwxrwxrwx  1 root root 0 Oct 26 15:51 ens11f0 -> ../../devices/pci0000:80/0000:80:03.0/0000:81:00.0/net/ens11f0
-        match = re.findall(device + '\/net\/(\w+)',all_interfaces)
-        if match:
-            for interface in match:
-                net_devices.append(interface)
-
-    if "lo" in net_devices:
-        try:
-            net_devices.remove("lo")
-        except:
-            pass
-    if "bonding_masters" in net_devices:
-        try:
-            net_devices.remove("bonding_masters")
-        except:
-            pass
-    if "bond0" in net_devices:
-        try:
-            net_devices.remove("bond0")
-        except:
-            pass
-    global pf_devices
-    pf_devices = net_devices
+    if not pf_devices:
+        return "No interfaces were found"
+    net_devices = pf_devices
     if (len(net_devices) > 0):
         get_status_output("mkdir " + path + file_name + "/ethtool_S")
         #invoke_command(['mkdir', path + file_name + "/ethtool_S"])
@@ -594,6 +606,27 @@ def modinfo_handler():
     return modinfo
 
 #**********************************************************
+#        mlnx_qos handler
+
+def mlnx_qos_handler():
+    if not pf_devices:
+        return "No interfaces were found"
+    net_devices = pf_devices
+    res = ""
+    options = ["-i"]
+    for interface in net_devices:
+        res += "\n\n"
+        for option in options:
+            st, mlnx_qos_interface = get_status_output("timeout 10s mlnx_qos " + option + " " + interface)
+            res += "mlnx_qos " + option + " " + interface + "\n"
+            if (st == 0):
+                res += mlnx_qos_interface
+            else:
+                res += "Could not run command: mlnx_qos " + option + " " + interface
+            res += "\n____________\n\n"
+    return res
+
+#**********************************************************
 #        cma_roce_mode/tos Handler
 
 def cma_roce_handler(func):
@@ -609,6 +642,7 @@ def cma_roce_handler(func):
         st, _device_res = get_status_output("timeout 10s cma_roce_" + func + " -d " + _device)
         if not first:
             res += "\n\n---------------\n\n"
+        res += "cma_roce_" + func + " -d " + _device + "\n\n"
         res += _device_res
         first = False
     return res
@@ -706,9 +740,9 @@ def ibdev2pcidev_handler():
     return "Could not run: " + '"' + "ibdev2pcidev" + '"'
 
 #**********************************************************
-#        itrace Handlers
+#        fwtrace Handlers
 
-def itrace_handler():
+def fwtrace_handler():
     if not is_MFT_installed:
         return "MFT is not installed, please install MFT and try again."
     dev_st, all_devices = get_status_output("timeout 10s ls /dev/mst")
@@ -718,25 +752,24 @@ def itrace_handler():
     if (len(devices) < 1):
         return "There are no devices"
 
-    options = ["sx1", "rx0", "rx1", "qpc"]
-    itrace = ""
+    options = ["-i all --tracer_mode FIFO"]
+    fwtrace = ""
     for device in devices:
-        if (itrace != ""):
-            itrace += "\n---------------------------------------------------------------\n\n"
+        if "cable" in device:
+            continue
+        if (fwtrace != ""):
+            fwtrace += "\n---------------------------------------------------------------\n\n"
         flag = 0
         for option in options:
             if (flag != 0):
-                itrace += "\n****************************************\n\n"
-            itrace += "itrace -d /dev/mst/" + device + " --noddr " + option + "\n\n"
-            itrace_st, itrace_device_option = get_status_output("timeout 30s itrace -d /dev/mst/" + device + " --noddr " + option)
-            if (itrace_st != 0):
-                itrace_device_option = "Could not run: " + '"' + "itrace -d /dev/mst/" + device + " --noddr " + option + '"'
-            itrace += itrace_device_option + "\n"
+                fwtrace += "\n****************************************\n\n"
+            fwtrace += "fwtrace -d /dev/mst/" + device + " " + option + "\n\n"
+            fwtrace_st, fwtrace_device_option = get_status_output("timeout 50s fwtrace -d /dev/mst/" + device + " " + option)
+            if (fwtrace_st != 0):
+                fwtrace_device_option = "Could not run: fwtrace -d /dev/mst/" + device + " " + option
+            fwtrace += fwtrace_device_option + "\n"
             flag = 1
-    return itrace
-
-#**********************************************************
-#        itrace Handlers
+    return fwtrace
 
 def mlxcables_options_handler():
     os.system("timeout 10s mst start > /dev/null 2>&1")
@@ -812,19 +845,27 @@ def mstcommand_d_handler(command):
     devices = all_devices.split()
     if (len(devices) < 1):
         return "There are no devices"
-    
-    suffix = ""
+
+    suffix_list = []
     if command == "mlxconfig":
-        suffix = " -e q"
+        suffix_list.append(" -e q")
+    elif command == "mlxlink":
+        suffix_list = [" -m", " -e", " -c", " --show_fec"]
+    else:
+        suffix_list.append(" ")
+
     command_result = ""
     for device in devices:
-        if (command_result != ""):
-            command_result += "\n\n-------------------------------------------------------------\n\n"
-        command_result += " " + command + " -d /dev/mst/" + device + suffix + "\n\n"
-        mlx_st, command_result_device = get_status_output("timeout 10s " + command + " -d /dev/mst/" + device + suffix)
-        if (mlx_st != 0):
-            command_result_device = "Could not run: " + command + " -d /dev/mst/" + device + '"'
-        command_result += command_result_device
+        if "cable" in device:
+            continue
+        for suffix in suffix_list:
+            if (command_result != ""):
+                command_result += "\n\n-------------------------------------------------------------\n\n"
+            command_result += " " + command + " -d /dev/mst/" + device + suffix + "\n\n"
+            mlx_st, command_result_device = get_status_output("timeout 10s " + command + " -d /dev/mst/" + device + suffix)
+            if (mlx_st != 0):
+                command_result_device = "Could not run: " + command + " -d /dev/mst/" + device + '"'
+            command_result += command_result_device
     return command_result
 
 #**********************************************************
@@ -946,6 +987,9 @@ def add_command_if_exists(command):
     elif (command == "cma_roce_mode"):
         result = cma_roce_handler("mode")
         status = 0
+    elif (command == "mlnx_qos_handler"):
+        result = mlnx_qos_handler()
+        status = 0
     elif (command == "cma_roce_tos"):
         result = cma_roce_handler("tos")
         status = 0
@@ -991,8 +1035,8 @@ def add_command_if_exists(command):
         result = ibdev2pcidev_handler()
         status = 0
         print_err_flag = 0
-    elif (command == "itrace"):
-        result = itrace_handler()
+    elif (command == "fwtrace"):
+        result = fwtrace_handler()
         status = 0
         print_err_flag = 0
     elif (command == "mlxcables"):
@@ -1009,6 +1053,10 @@ def add_command_if_exists(command):
         print_err_flag = 0
     elif (command == "mlxmcg -d"):
         result = mstcommand_d_handler('mlxmcg')
+        status = 0
+        print_err_flag = 0
+    elif (command ==  "mlxlink_query"):
+        result = mstcommand_d_handler('mlxlink')
         status = 0
         print_err_flag = 0
     elif (command == "mlxconfig_query"):
@@ -1079,7 +1127,6 @@ def add_command_if_exists(command):
         if (status != 0):
             print_err_flag = 1
             result = "Could not run: " + '"' + "ip link ls type team" + '"'
-        
         team_interfaces = re.findall(r'.*?\:(.*)\: <.*',ip_link_output)
         if team_interfaces:
             for team in team_interfaces:
@@ -1817,7 +1864,7 @@ def arrange_system_files():
 #----------------------------------------------------------
 
 def arrange_server_commands_section():
-
+    update_net_devices()
     if verbose_flag:
         print("\tGenerating server commands section has started")
     # add server commands list
@@ -2772,17 +2819,18 @@ def memlock():
 
 #----------------------------------------------------------
 
-bandwidth = {}
-latency = {}
 
 def bw_and_lat():
     global bandwidth
     global latency
+    global perf_samples
+
     st, devices = get_status_output("timeout 10s ls /sys/class/infiniband")
     if (st != 0 or ("No such file or directory" in devices)):
         try:
             perf_setting_collection.remove("Bandwidth")
             perf_setting_collection.remove("Latency")
+            perf_setting_collection.remove("Perf Samples")
         except:
             pass
         return
@@ -2793,7 +2841,30 @@ def bw_and_lat():
     st, show_gids = get_status_output("timeout 10s show_gids | sort -k5,6 --numeric-sort")
     if st != 0:
        show_gids = ""
+    ##------------------------------------Samples before test------------------------------------------------##
+    for pf_device in pf_devices:
+        perf_samples[pf_device] = ""
+        st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e pause -e discards")
+        if st == 0:
+            perf_samples[pf_device] += "Before test sample: ethtool -S " + pf_device + " | grep -e pause -e discards \n" + pfc_output + "\n"
+        st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e prio")
+        if st == 0:
+            perf_samples[pf_device] += "Before test sample: ethtool -S " + pf_device + " | grep -e prio \n" + pfc_output + "\n"
+    ##------------------------------------End samples before test------------------------------------------------##
     for device in devices:
+        perf_samples[device] = ""
+        st, cnp_files = get_status_output("timeout 10s ls /sys/class/infiniband/" + device + "/ports/1/hw_counters/*cnp*")
+        cnp_files = cnp_files.split()
+        ##------------------------------------Samples before test------------------------------------------------##
+        for cnp_file in cnp_files:
+            st, cnp_output = get_status_output("timeout 10s cat " + cnp_file)
+            if st == 0:
+                perf_samples[device] += "Before test sample: cat " + cnp_file + "\n" + cnp_output + "\n"
+        st, ecn_output = get_status_output("cat /sys/class/infiniband/" + device + "/ports/1/hw_counters/np_ecn_marked_roce_packets")
+        if st == 0:
+            perf_samples[device] += "Before test sample: cat /sys/class/infiniband/" + device + "/ports/1/hw_counters/np_ecn_marked_roce_packets \n" + ecn_output + "\n"
+        perf_samples[device] += "\n\n------------------------------------------------\n\n"
+        ##------------------------------------End samples before test------------------------------------------------##
         bandwidth[device] = ""
         cmd = "timeout 10s ib_write_bw --report_gbits -d " + device + " >/dev/null & sleep 2; timeout 10s ib_write_bw --report_gbits -d " + device + " localhost"
         st, bandwidth[device] = getstatusoutput(cmd)
@@ -2818,7 +2889,24 @@ def bw_and_lat():
                     latency[device] += latency_x
             except:
                 pass
-
+        ##------------------------------------Samples after test------------------------------------------------##
+        for cnp_file in cnp_files:
+            st, cnp_output = get_status_output("timeout 10s cat " + cnp_file)
+            if st == 0:
+                perf_samples[device] += "After test sample: cat " + cnp_file + "\n" + cnp_output + "\n"
+        st, ecn_output = get_status_output("cat /sys/class/infiniband/mlx5_0/ports/1/hw_counters/np_ecn_marked_roce_packets")
+        if st == 0:
+            perf_samples[device] += "After test sample: cat /sys/class/infiniband/mlx5_0/ports/1/hw_counters/np_ecn_marked_roce_packets \n" + ecn_output + "\n"
+        ##------------------------------------End samples after test------------------------------------------------##
+    ##------------------------------------Samples after test------------------------------------------------##
+    for pf_device in pf_devices:
+        st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e pause -e discards")
+        if st == 0:
+            perf_samples[pf_device] += "After test sample: ethtool -S " + pf_device + " | grep -e pause -e discards \n" + pfc_output + "\n"
+        st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e prio")
+        if st == 0:
+            perf_samples[pf_device] += "After test sample: ethtool -S " + pf_device + " | grep -e prio \n" + pfc_output + "\n"
+    ##------------------------------------End samples after test------------------------------------------------##
 #==========================================================
 
 def init_status_dict():
@@ -3321,6 +3409,16 @@ def html2_write_lspci(html2):
 
 #----------------------------------------------------------
 
+def html2_write_samples(html2):
+    i = 0
+    for device, val in perf_samples.items():
+        i += 1
+        if (i > 1):
+            html2.write("<br/>")
+        html2.write(device + "<br/>" + val + "<br/>")
+        if (i < len(perf_samples)):
+            html2.write("<br/>****************************************<br/>")
+
 def html2_write_bw(html2):
     i = 0
     for device, val in bandwidth.items():
@@ -3373,11 +3471,12 @@ def html2_write_paragraph(html2, base, prev_parag_end):
             else:
                 html2.write("Status: <font color=" +'"'+"green"+'"'+" size="+'"'+"3"+'"'+">" + perf_status_dict[perf_setting_collection[i]] + "</font>")
             html2.write("<br/>")
-
         if (perf_setting_collection[i] == "Memory Allocation"):
             html2.write("Setting Value: <br/>" + perf_val_dict[perf_setting_collection[i]].replace('<', "&lt;").replace('>', "&gt;"))
         elif (perf_setting_collection[i] == "IP Forwarding"):
             html2_write_ip_forwarding(html2)
+        elif (perf_setting_collection[i] == "Perf Samples"):
+            html2_write_samples(html2)
         elif (perf_setting_collection[i] == "Bandwidth"):
             html2_write_bw(html2)
         elif (perf_setting_collection[i] == "Latency"):
@@ -3386,10 +3485,9 @@ def html2_write_paragraph(html2, base, prev_parag_end):
             html2.write("Setting Value: " + perf_val_dict[perf_setting_collection[i]].replace('<', "&lt;").replace('>', "&gt;"))
         else:
             html2_write_lspci(html2)
-        
         html2.write("</p>")
         sec=sec+1
-    
+
     html2.write("<small><a href=" + '"' + "#sec" + str(sec-1) + '"' + ">[&lt;&lt;prev]</a></small> ")
     html_write_index(html2)
     html2.write("</p>")
@@ -3398,7 +3496,6 @@ def html2_write_paragraph(html2, base, prev_parag_end):
 
 def build_and_finalize_html2():
     html2 = open(html2_path, 'a')
-    
     #=======================SORT COLLECTIONS FOR PRINTING HTML =================
 
     perf_setting_collection.sort()
