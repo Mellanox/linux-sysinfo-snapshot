@@ -2662,23 +2662,32 @@ def lspci(check_latest):
         card = card.split("]")[0]
         card = card.lower()
 
-        if (("-ib" in card) or ("pro" in card) or ("x-3" in card) or ("x3" in card) or ("x-4" in card) or ("x4" in card) or ("x-5" in card) or ("x5" in card) or ("connectib" in card)):
+        if (("-ib" in card) or ("pro" in card) or ("x-3" in card) or ("x3" in card) or ("x-4" in card) or ("x4" in card) or ("connectib" in card)):
             pci_devices[i]["desired_gen"] = 3.0
         else:
-            if ("pcie 2.0" in card):
+            if ("x-5" in card) or ("x5" in card) or ("X-5" in card) or ("x6" in card) or ("X-6" in card) or ("MT27630" in card_str) or ("MT28908" in card_str):
+                pci_devices[i]["desired_gen"] = 4.0
+            elif ("pcie 2.0" in card):
                 pci_devices[i]["desired_gen"] = 2.0
                 pci_devices[i]["desired_width"] = 8.0
+                pci_devices[i]["desired_speed"] = 5.0
+                pci_devices[i]["desired_payload_size"] = 256.0
+                pci_devices[i]["desired_max_read_request"] = 512.0
             elif (("x-2" in card) or ("x2" in card)):
                 pci_devices[i]["desired_gen"] = 2.0
                 pci_devices[i]["desired_width"] = 4.0
+                pci_devices[i]["desired_speed"] = 5.0
+                pci_devices[i]["desired_payload_size"] = 256.0
+                pci_devices[i]["desired_max_read_request"] = 512.0
             else:
                 pci_devices[i]["desired_gen"] = 1.0
                 pci_devices[i]["desired_width"] = 4.0
-            pci_devices[i]["desired_speed"] = 5.0
-            pci_devices[i]["desired_payload_size"] = 256.0
-            pci_devices[i]["desired_max_read_request"] = 512.0
+                pci_devices[i]["desired_speed"] = 5.0
+                pci_devices[i]["desired_payload_size"] = 256.0
+                pci_devices[i]["desired_max_read_request"] = 512.0
+            
 
-        if (("-ib" in card) or ("connectib" in card) or ("x4" in card) or ("x-4" in card) or ("x-5" in card) or ("x5" in card)):
+        if (("-ib" in card) or ("connectib" in card) or ("x4" in card) or ("x-4" in card) or ("x-5" in card) or ("x5" in card) or ("x-6" in card) or ("x6" in card)):
             pci_devices[i]["desired_width"] = 16.0
 
         st, firmwares_query = get_status_output("mstflint -d " + card_pci + " q | grep  'FW Version\|'^PSID'' ")
@@ -2894,9 +2903,9 @@ def bw_and_lat():
             st, cnp_output = get_status_output("timeout 10s cat " + cnp_file)
             if st == 0:
                 perf_samples[device] += "After test sample: cat " + cnp_file + "\n" + cnp_output + "\n"
-        st, ecn_output = get_status_output("cat /sys/class/infiniband/mlx5_0/ports/1/hw_counters/np_ecn_marked_roce_packets")
+        st, ecn_output = get_status_output("cat /sys/class/infiniband/" + device + "/ports/1/hw_counters/np_ecn_marked_roce_packets")
         if st == 0:
-            perf_samples[device] += "After test sample: cat /sys/class/infiniband/mlx5_0/ports/1/hw_counters/np_ecn_marked_roce_packets \n" + ecn_output + "\n"
+            perf_samples[device] += "After test sample: cat /sys/class/infiniband/" + device + "/ports/1/hw_counters/np_ecn_marked_roce_packets \n" + ecn_output + "\n"
         ##------------------------------------End samples after test------------------------------------------------##
     ##------------------------------------Samples after test------------------------------------------------##
     for pf_device in pf_devices:
@@ -3856,6 +3865,7 @@ def update_flags(args):
     global generate_config_flag
     global config_file_flag
     global isFile
+    global csvfile
     isFile = False
 
     if (args.dir):
@@ -3891,7 +3901,7 @@ def update_flags(args):
             sys.exit(1)
     if (args.generate_config):
         generate_config_flag = True
-        config_path = args.config
+        config_path = args.generate_config
         try:
             csvfile = open(config_path, 'w+')
             fieldnames = [COMMAND_CSV_HEADER, INVOKED_CSV_HEADER]
