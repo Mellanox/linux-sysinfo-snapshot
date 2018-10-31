@@ -43,14 +43,19 @@ def standarize_str(tmp):
     if sys.version_info[0] == 2:
         return tmp.strip()
     elif sys.version_info[0] == 3:
-        return tmp.strip().encode('ascii', 'ignore').decode("utf-8")
+        return tmp.decode("utf-8", 'ignore').strip()
     else:
         return tmp.strip()
 
 def get_status_output(command):
-    p = subprocess.Popen([command], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    stdout, stderr = p.communicate()
-    return p.returncode, standarize_str(stdout)
+    try:
+        p = subprocess.Popen([command], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        stdout, stderr = p.communicate()
+        return p.returncode, standarize_str(stdout)
+    except:
+        error = "\nError while reading output from command - " + command + "\n"
+        return 1, error
+
 
 # Ditto but preserving the exit status.
 # Returns a pair (sts, output)
