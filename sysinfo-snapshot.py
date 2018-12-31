@@ -92,7 +92,7 @@ signal.signal(signal.SIGINT, signal_handler)
 ###########################################################
 #        General Variables
 
-version = "3.3.1"
+version = "3.3.2"
 
 sys_argv = sys.argv
 len_argv = len(sys.argv)
@@ -2663,6 +2663,8 @@ def lspci(check_latest):
             pci_devices[i]["status"] = not_available
             pci_devices[i]["desired_gen"] = not_available
             continue
+
+        card_str = card
         card = card.split("[")[1]
         card = card.split("]")[0]
         card = card.lower()
@@ -2670,7 +2672,7 @@ def lspci(check_latest):
         if (("-ib" in card) or ("pro" in card) or ("x-3" in card) or ("x3" in card) or ("x-4" in card) or ("x4" in card) or ("connectib" in card)):
             pci_devices[i]["desired_gen"] = 3.0
         else:
-            if ("x-5" in card) or ("x5" in card) or ("X-5" in card) or ("x6" in card) or ("X-6" in card) or ("MT27630" in card_str) or ("MT28908" in card_str):
+            if ("x-5" in card) or ("x5" in card) or ("x6" in card) or ("x-6" in card) or ("MT27630" in card_str) or ("MT28908" in card_str):
                 pci_devices[i]["desired_gen"] = 4.0
             elif ("pcie 2.0" in card):
                 pci_devices[i]["desired_gen"] = 2.0
@@ -2690,9 +2692,9 @@ def lspci(check_latest):
                 pci_devices[i]["desired_speed"] = 5.0
                 pci_devices[i]["desired_payload_size"] = 256.0
                 pci_devices[i]["desired_max_read_request"] = 512.0
-            
 
-        if (("-ib" in card) or ("connectib" in card) or ("x4" in card) or ("x-4" in card) or ("x-5" in card) or ("x5" in card) or ("x-6" in card) or ("x6" in card)):
+
+        if (("-ib" in card) or ("connectib" in card) or ("x4" in card) or ("x-4" in card) or ("x-5" in card) or ("x5" in card) or ("x-6" in card) or ("x6" in card) or ("MT27630" in card_str) or ("MT28908" in card_str)):
             pci_devices[i]["desired_width"] = 16.0
 
         st, firmwares_query = get_status_output("mstflint -d " + card_pci + " q | grep  'FW Version\|'^PSID'' ")
