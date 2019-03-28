@@ -18,7 +18,6 @@ import shutil
 import platform
 import csv
 import argparse
-
 from distutils.version import LooseVersion
 
 try:
@@ -92,7 +91,7 @@ signal.signal(signal.SIGINT, signal_handler)
 ###########################################################
 #        General Variables
 
-version = "3.3.1"
+version = "3.3.4"
 
 sys_argv = sys.argv
 len_argv = len(sys.argv)
@@ -178,8 +177,8 @@ def get_installed_cards_ports():
                         for port in str_ports:
                             port_num = port.split(":")[0]
                             installed_cards_ports[card_name].append(port_num)
-                            i, sminfo_output = get_status_output("timeout 10s /usr/sbin/sminfo -C " + card_name + " -P " + port_num + "")
-                            if i != 0:
+                            st, sminfo_output = get_status_output("timeout 10s /usr/sbin/sminfo -C " + card_name + " -P " + port_num + "")
+                            if st != 0:
                                 continue
                             # ex: sminfo: sm lid 3 sm guid 0x248a0703009c0196, activity count 38526 priority 15 state 3 SMINFO_MASTER
                             sm_guid = sminfo_output.split()[6]
@@ -292,13 +291,18 @@ def update_net_devices():
     if (st != 0):
         return "Failed to run the command ls -la /sys/class/net"
 
-
     for device in mlx_pci_devices:
         # e.g lrwxrwxrwx  1 root root 0 Oct 26 15:51 ens11f0 -> ../../devices/pci0000:80/0000:80:03.0/0000:81:00.0/net/ens11f0
-        match = re.findall(device + '\/net\/(\w+)',all_interfaces)
+        match = re.findall(device + '\/net\/([\w.-]+)',all_interfaces)
         if match:
             for interface in match:
                 net_devices.append(interface)
+
+    # e.g lrwxrwxrwx  1 root root 0 Oct 26 15:51 ens11f0 -> ../../devices/pci0000:80/0000:80:03.0/0000:81:00.0/net/ens11f0
+    match = re.findall('virtual\/net\/([\w.-]+)',all_interfaces)
+    if match:
+        for interface in match:
+            net_devices.append(interface)
 
     if "lo" in net_devices:
         try:
@@ -406,14 +410,14 @@ pcie_collection = ["lspci -vvvxxxxx"]
 
 ib_collection = []
 
-commands_collection = ["ip -s link show", "rpm -qa --last", "ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "fwtrace", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", \
+commands_collection = ["ip -s -s link show", "ip -s -s addr show", "rpm -qa --last", "ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "fwtrace", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", \
                         "df -lh", "/opt/mellanox/ethtool/sbin/ethtool --version", "/sbin/ethtool --version", "ethtool_all_interfaces", "fdisk -l", "fw_ini_dump", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", \
                         "initctl list", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod", "lspci", "lspci -tv", "lspci_xxxvvv", "lspci -vvvxxxxx", \
-                        "mount", "mstregdump-func", "netstat -anp", "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info", "ps -eLo", "ip route show table all", "service --status-all", \
+                        "mount", "mstdump-func", "netstat -anp", "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info", "ps -eLo", "ip route show table all", "service --status-all", \
                         "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all", "sysctl -a", "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname -a", "uptime", \
                         "yy_MLX_modules_parameters", "yy_IB_modules_parameters", "zz_proc_net_bonding_files", "zz_sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", \
                         "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "mlxcables --DDM/--read_all_regs", "ip addr show", "ip -6 addr show", "ip link show", "ip route show", "ip -6 route show", "modinfo", "show_pretty_gids", \
-                        "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status", "mlxlink_query", "mlnx_qos_handler"]
+                        "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status", "mlxlink_query", "mget_temp_query", "mlnx_qos_handler", "devlink_handler"]
 
 if (cur_os != "debian"):
     commands_collection.extend(["chkconfig --list | sort"])
@@ -487,12 +491,6 @@ def represents_int(s):
     except ValueError:
         return False
 
-'''
-def invoke_command(str):
-    p = subprocess.Popen(str, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out, err = p.communicate()
-    return out
-'''
 #**********************************************************
 #        show_pretty_gids Handler
 
@@ -564,7 +562,7 @@ def ethtool_all_interfaces_handler():
         return "Failed to run the command " + ethtool_command
     #Output - ethtool version 4.8
     version = ethtool_version.split()[2]
-    if (float(version) < 4.7):
+    if (LooseVersion(version) < LooseVersion('4.7')):
         ethtool_version = "Warning - " + ethtool_version + ", it is older than 4.7 ! \nIt will not show the 25g generation speeds correctly, cause ethtool 4.6 and below do not support it." 
 
     res += ethtool_version
@@ -607,8 +605,76 @@ def modinfo_handler():
         st, modinfo_module = get_status_output("timeout 10s modinfo " + module + " | grep 'filename\|version:'")
         if (st != 0):
             modinfo_module = "Could not run: " + '"' + "timeout 10s modinfo " + module + " | grep 'filename\|version:'"
-        modinfo += modinfo_module + "\n" 
+        modinfo += modinfo_module + "\n"
     return modinfo
+
+
+#**********************************************************
+#        devlink handler
+
+def devlink_handler():
+    dev_st, devlink_health = get_status_output("timeout 10s devlink health show")
+    if (dev_st != 0):
+        return "There are no devices"
+    dev_st, devlink_health_j = get_status_output("timeout 10s devlink health show -j")
+    if (dev_st != 0):
+        return "There are no devices"
+
+    if (os.path.exists(path + file_name + "/devlink") == False):
+        os.mkdir(path + file_name + "/devlink")
+
+    devlink_health_json = json.loads(devlink_health_j)['health']
+    pci_devices = devlink_health_json.keys()
+    if (len(pci_devices) < 1):
+        return "There are no devices"
+    result = "\n" + devlink_health + "\n"
+    result += "\n--------------------------------------------------\n"
+
+    options = ["diagnose", "dump show"]
+    for device in pci_devices:
+        for i, reporter in enumerate(devlink_health_json[device]):
+            filtered_device_name = device.replace(":", "").replace(".", "").replace("/", "")
+            if reporter['name'] == "fw_fatal" and 'last_dump_time' in devlink_health_json[device][i].keys():
+                command = "devlink health dump show %s reporter %s " % (device, reporter['name'])
+                dump_output_result = command + "\n\n"
+                dump_output_st, dump_output = get_status_output("timeout 10s " + command)
+                if (dump_output_st != 0):
+                    dump_output_result += "Error while reading output from command - " + command + "\n"
+                dump_output = dump_output.split()
+                space = dump_output[1]
+                snapshot_id = dump_output[3]
+                #devlink health dump show pci/0000:06:00.0/cr-space snapshot 1
+                dump_output_st, dump_output = get_status_output("timeout 10s devlink region dump " + device + "/" + space + " snapshot " + snapshot_id)
+                if (dump_output_st != 0):
+                    dump_output_result += "Error while reading output from command - " + command + "\n"
+                dump_output_result += dump_output
+                devlink_file_name = filtered_device_name + "_" + option.replace(" ", "_") + "_" + reporter['name'] + ".txt"
+                full_file_name = "devlink/devlink_" + devlink_file_name
+                file = open(path + file_name + "/" + full_file_name, 'w+')
+                file.write(dump_output_result)
+                file.close()
+                result += "<td><a href=" + full_file_name + "> " + devlink_file_name + "</a></td>"
+                result += "\n--------------------------------------------------\n"
+            else:
+                for option in options:
+                    if 'last_dump_time' in devlink_health_json[device][i].keys() or (not option == "dump show"):
+                        command = "devlink health %s %s reporter %s " % ( option, device, reporter['name'])
+                        dump_output_result = command + "\n\n"
+                        dump_output_st, dump_output = get_status_output("timeout 10s " + command)
+                        if (dump_output_st != 0):
+                            dump_output_result += "Error while reading output from command - " + command + "\n"
+                        dump_output_result += dump_output
+                        devlink_file_name = filtered_device_name + "_" + option.replace(" ", "_") + "_" + reporter['name'] + ".txt"
+                        full_file_name = "devlink/devlink_" + devlink_file_name
+                        file = open(path + file_name + "/" + full_file_name, 'w+')
+                        file.write(dump_output_result)
+                        file.close()
+                        #dump_output_result += "<td><a href=" + full_file_name + "> " file_name + "</a></td>"
+                        result += "<td><a href=" + full_file_name + "> " + devlink_file_name + "</a></td>"
+                        result += "\n--------------------------------------------------\n"
+    return result
+
+#**********************************************************
 
 #**********************************************************
 #        mlnx_qos handler
@@ -730,7 +796,7 @@ def add_fw_ini_dump_links():
         if (file.startswith("mstflint") or file.startswith("flint")):
             #filtered_file_name = file.translate(None, ':.')
             filtered_file_name = file.replace(":", "").replace(".", "")
-            os.rename(path+file_name+"/firmware/"+file, path+file_name+"/firmware/"+filtered_file_name)
+            os.rename(path + file_name + "/firmware/" + file, path + file_name + "/firmware/" + filtered_file_name)
             file_link.append("<td><a href=firmware/" + filtered_file_name + ">" + file + "</a></td>")
     return file_link
 
@@ -804,7 +870,6 @@ def mlxcables_options_handler():
 
     return res
 
-
 def mlxcables_standard_handler():
     os.system("timeout 10s mst start > /dev/null 2>&1")
     os.system("timeout 10s mst cable add > /dev/null 2>&1")
@@ -822,7 +887,7 @@ def lspci_xxxvvv_handler():
     st, output = get_status_output(cmd)
     if (st == 0 and output == ""):
         return "There are no Mellanox cards"
-   
+
     interfaces = output.splitlines()
     res = ""
     for i in range(0, len(interfaces)):
@@ -855,7 +920,7 @@ def mstcommand_d_handler(command):
     if command == "mlxconfig":
         suffix_list.append(" -e q")
     elif command == "mlxlink":
-        suffix_list = [" -m", " -e", " -c", " --show_fec"]
+        suffix_list = [" -m", " -e", " -c", " --show_fec", " --port_type PCIE -c -e"]
     else:
         suffix_list.append(" ")
 
@@ -868,49 +933,69 @@ def mstcommand_d_handler(command):
                 command_result += "\n\n-------------------------------------------------------------\n\n"
             command_result += " " + command + " -d /dev/mst/" + device + suffix + "\n\n"
             mlx_st, command_result_device = get_status_output("timeout 10s " + command + " -d /dev/mst/" + device + suffix)
+            command_result_device = command_result_device.replace("[31m","").replace("[32m","").replace("[33m","").replace("[0m","")
             if (mlx_st != 0):
-                command_result_device = "Could not run: " + command + " -d /dev/mst/" + device + '"'
+                command_result_device = "Could not run: " + command + " -d /dev/mst/" + device + suffix + '"\n' + command_result_device
+
             command_result += command_result_device
     return command_result
 
 #**********************************************************
-#        mstregdump-func Handlers
+#        mstdump-func Handlers
 
 def mstregdump_func_handler():
-    sleep_period = "2"
-    st, res = get_status_output("for interface in `lspci | grep Mellanox | grep \"\.0\" | awk '{print $1}'`; do echo yes; for instance in 1 2 3; do temp='_'; temp=$interface$temp$instance; mstregdump $interface  > " + path + file_name + "/firmware/mstregdump_$temp; sleep " + sleep_period + "; done; done")
+    mstregdump_out = []
+    sleep_period = 2
+    st, res = get_status_output("lspci | grep Mellanox | awk '{print $1}'")
+    if st != 0:
+        mstregdump_out.append("There are no Mellanox cards.\n")
+        return 2, mstregdump_out
+    if not is_MFT_installed:
+        mstregdump_out.append("MFT is not installed, please install MFT and try again.")
+        return 2, mstregdump_out
 
-    st2 = 0
-    res2 = ""
+    temp = '_run_'
+    mellanox_cards = res.splitlines()
+    for card in mellanox_cards:
+        for i in range(0, 3):
+            output = card + temp + str(i)
+            filtered_file_name = output.replace(":", "").replace(".", "")
+            st, res = get_status_output("mstregdump " + card + " > " + path + file_name + "/firmware/mstregdump_" + filtered_file_name)
+            mstregdump_out.append("<td><a href=\"firmware/mstregdump_" + filtered_file_name + "\">" + output + "</a></td>")
+            time.sleep(sleep_period)
+
+    for card in mellanox_cards:
+        for i in range(0, 3):
+            output = card + temp + str(i)
+            filtered_file_name = output.replace(":", "").replace(".", "")
+            st, res = get_status_output("mstdump " + card + " > " + path + file_name + "/firmware/mstdump_" + filtered_file_name)
+            mstregdump_out.append("<td><a href=\"firmware/mstdump_" + filtered_file_name + "\">" + output + "</a></td>")
+            time.sleep(sleep_period)
+
     if mtusb_flag:
-        if not is_MFT_installed:
-            return "MFT is not installed, please install MFT and try again."
-        else:
-            st2, res2 = get_status_output("for i2c in `mst status | grep ^/ | grep USB | awk '{print $1}'`; do echo yes; for instance in 1 2 3; do temp='_'; interface=${i2c##*/}; temp=$interface$temp$instance; mstdump $i2c  > " + path + file_name + "/firmware/mstdump_$temp; sleep " + sleep_period + "; done; done")
+        st, res = get_status_output("mst status | grep ^/ | grep USB | awk '{print $1}'")
+        if st != 0:
+            mstregdump_out.append("\nThere are no Mellanox USB devices")
+            return 1, mstregdump_out
+        mellanox_cards = res.splitlines()
+        for card in mellanox_cards:
+            for i in range(0, 3):
+                output = card + temp + str(i)
+                filtered_file_name = output.replace(":", "").replace(".", "").replace("/", "_")
+                st, res = get_status_output("mstdump " + card + " > " + path + file_name + "/firmware/mtUSBdump_" + filtered_file_name)
+                mstregdump_out.append("<td><a href=\"firmware/mtUSBdump_" + filtered_file_name + "\">" + output + "</a></td>")
+                time.sleep(sleep_period)
 
-    if st == 0 and res == "" and st2 == 0 and res2 == "":
-        return "NULL_1"
-    if st == 0 or (st2 == 0 and mtusb_flag):
-        return "yes"
-    return "NULL_2"
+    return 0, mstregdump_out
 
-def add_mstregdump_func_links():
-    mstregdump_link = {}
-    for file in os.listdir(path + file_name + "/firmware"):
-        if (file.startswith("mstregdump") or file.startswith("mstdump")):
-            #filtered_file_name = file.translate(None, ':.')
-            filtered_file_name = file.replace(":", "").replace(".", "")
-            os.rename(path+file_name+"/firmware/"+file, path+file_name+"/firmware/"+filtered_file_name)
-            mstregdump_link[file] = "<td><a href=firmware/" + filtered_file_name + ">" + file + "</a></td>"
-    return mstregdump_link
 
 #**********************************************************
 #        show_irq_affinity_all Handlers
 
-def show_irq_affinity_all_handler():    
+def show_irq_affinity_all_handler():
     if (os.path.exists("/sys/class/net") == False):
         return "No Net Devices"
-    net_devices = "" 
+    net_devices = ""
     st, net_devices = get_status_output("timeout 10s ls /sys/class/net")
     if (st != 0):
         return "Could not run: " + '"' + "ls /sys/class/net" + '"'
@@ -989,21 +1074,29 @@ def add_command_if_exists(command):
     elif (command == "python_used_version"):
         result = platform.python_version()
         status = 0
+        print_err_flag = 0
     elif (command == "cma_roce_mode"):
         result = cma_roce_handler("mode")
         status = 0
+        print_err_flag = 0
     elif (command == "mlnx_qos_handler"):
         result = mlnx_qos_handler()
         status = 0
+        print_err_flag = 0
     elif (command == "cma_roce_tos"):
         result = cma_roce_handler("tos")
         status = 0
+        print_err_flag = 0
     elif (command == "mlxdump"):
         result = mlxdump_handler()
         if result == "Links":
             result = add_mlxdump_links()
             global mlxdump_is_string
             mlxdump_is_string = False
+        status = 0
+        print_err_flag = 0
+    elif (command == "devlink_handler"):
+        result = devlink_handler()
         status = 0
         print_err_flag = 0
     elif (command == "show_pretty_gids"):
@@ -1064,30 +1157,29 @@ def add_command_if_exists(command):
         result = mstcommand_d_handler('mlxlink')
         status = 0
         print_err_flag = 0
+    elif (command == "mget_temp_query"):
+        result = mstcommand_d_handler('mget_temp')
+        status = 0
+        print_err_flag = 0
     elif (command == "mlxconfig_query"):
         result = mstcommand_d_handler('mlxconfig')
         status = 0
         print_err_flag = 0
-    elif ("mstregdump-func" in command):
-        result = mstregdump_func_handler()
-        if (result == "NULL_1"):
-            result = "There are no Mellanox cards."
-        elif (result == "NULL_2"):
-            result = "Exception was raised while running the command"
-        elif (result == "yes"):
-            result = add_mstregdump_func_links()
-            global mstreg_dump_is_string
-            mstreg_dump_is_string = False
+    elif ("mstdump-func" in command):
+        global mstreg_dump_is_string
+        status, result = mstregdump_func_handler()
+        mstreg_dump_is_string = False
         status = 0
         print_err_flag = 0
     elif (command == "show_irq_affinity_all"):
         result = show_irq_affinity_all_handler()
-        status = 0    
+        status = 0
         print_err_flag = 0
     elif (command == "yy_MLX_modules_parameters"):
         st, result = get_status_output("awk '{ print FILENAME " + '"' + "=" + '"' + " $0  }' /sys/module/mlx*/parameters/*")
         if (st == 0):
             status = 0
+            print_err_flag = 0
         else:
             status = 1
             print_err_flag = 1
@@ -1096,6 +1188,7 @@ def add_command_if_exists(command):
         st , result = get_status_output("if [ -d /sys/class/infiniband ]; then awk '{ print FILENAME " + '"' + " = " + '"' + " $0  }' /sys/module/ib*/parameters/*; else echo Unable to get ib modules params : /sys/class/infiniband does not exist.; fi")
         if (st == 0):
             status = 0
+            print_err_flag = 0
         else:
             status = 1
             print_err_flag = 1
@@ -1104,8 +1197,8 @@ def add_command_if_exists(command):
         status, result = zz_files_handler('/proc/net/bonding/')
         if (status == 0):
             if (is_ib == 0):
-                status=0
-                print_err_flag=0
+                status = 0
+                print_err_flag = 0
             else:
                 print_err_flag = 1
                 status = 1
@@ -1114,7 +1207,7 @@ def add_command_if_exists(command):
             print_err_flag = 1
     elif (command == "zz_sys_class_net_files"):
         status, result = zz_files_handler('/sys/class/net/')
-        if (status == 0):    
+        if (status == 0):
             if (is_ib == 0):
                 status=0
                 print_err_flag = 0
@@ -1155,6 +1248,8 @@ def add_command_if_exists(command):
         if status != 0:
             print_err_flag = 1
             result = "Could not run: " + '"' + command + '"'
+        else:
+            print_err_flag = 0
     elif "ps -eLo" in command:
         status, result = get_status_output("timeout 10s ps -eLo lstart,%cpu,psr,nlwp,f,uid,pid,ppid,pri,rtprio,ni,vsz,rss,stat,tty,time,wchan,args")
         if status != 0:
@@ -1162,14 +1257,17 @@ def add_command_if_exists(command):
             result = "Could not run: " + '"' + command + '"'
     else:
         # invoking regular command
+        print_err_flag = 0
         status, result = get_status_output("timeout 10s " + command)
         if (status != 0 and not command.startswith("service")):
             if not (iscsiadm_st == 0 and command.startswith("iscsiadm")):
                 result = "Could not run: " + '"' + command + '"'
+                print_err_flag = 1
 
     # if iscsiadm --version command exists, add all isciadm commands to the available ones
     if (iscsiadm_st == 0 and command.startswith("iscsiadm")):
         status = 0
+        print_err_flag = 0
 
     # add command to server commands dictionaty only if exists
     if ((status == 0) or (command.startswith("service"))):
@@ -1189,18 +1287,17 @@ def add_command_if_exists(command):
 def multicast_information_handler():
     if (st_saquery != 0):
         return "saquery command is not found"
-    
+
     st, saquery_g = get_status_output("timeout 10s saquery -g 2>/dev/null")
     if (st != 0):
         return "saquery -g command is not found"
-    
     res = "MLIDs list: \n" + saquery_g + "\n\nMLIDs members for each multicast group:"
-    
+
     st, MLIDS = get_status_output("timeout 10s saquery -g | grep -i Mlid | sed 's/\./ /g'|awk '{print $2}' | sort | uniq")
     if (st != 0):
         return "Could not run: " + '"' + "saquery -g | grep -i Mlid | sed 's/\./ /g'|awk '{print $2}' | sort | uniq" + '"'
-    MLIDS = MLIDS.split()    
-    
+    MLIDS = MLIDS.split()
+
     for MLID in MLIDS:
         st, saquery_mlid = get_status_output("timeout 10s saquery -m " + MLID + " --smkey 1 2>/dev/null")
         if (st != 0):
@@ -1226,11 +1323,11 @@ def perfquery_cards_ports_handler():
 def ib_find_bad_ports_handler(card, port):
     if is_ib != 0:
         return "No ibnetdiscover"
-    
+
     st, iblinkinfo_bad = get_status_output("timeout 10s iblinkinfo --Ca " + card + " --Port " + port + "| grep Could")
     if st != 0:
         return iblinkinfo_bad
-    
+
     res = "iblinkinfo | grep Could\n"
     if iblinkinfo_bad == "":
         res += "\tNo Bad Ports\n"
@@ -1262,9 +1359,9 @@ def calc_IP(MGID):
 def ib_mc_info_show_handler():
     if (st_saquery != 0):
         return "saquery command is not found"
-    
+
     MAX_GROUPS=64
-    
+
     st, saquery = get_status_output("timeout 10s saquery -m --smkey 1 2>/dev/null")
     if (st != 0):
         return "Could not run: " + '"' + "saquery -m --smkey 1 2>/dev/null" + '"'
@@ -1459,9 +1556,9 @@ def ib_topology_viewer_handler(card, port):
         return "No ibnetdiscover"
 
     suffix = card +"_" + port
-    st, GUIDS = get_status_output("timeout 10s cat " + path+file_name + "/ibnetdiscover_p_"+ suffix + " | grep -v -i sfb | grep -e ^SW | awk '{print $4}' | uniq")
+    st, GUIDS = get_status_output("timeout 10s cat " + path + file_name + "/ibnetdiscover_p_" + suffix + " | grep -v -i sfb | grep -e ^SW | awk '{print $4}' | uniq")
     if (st != 0):
-        return "Could not run: " + '"' + "cat " + path+file_name + "/ibnetdiscover_p_"+ suffix + " | grep -v -i sfb | grep -e ^SW | awk '{print $4}' | uniq" + '"'
+        return "Could not run: " + '"' + "cat " + path + file_name + "/ibnetdiscover_p_" + suffix + " | grep -v -i sfb | grep -e ^SW | awk '{print $4}' | uniq" + '"'
     if (GUIDS == ""):
         return "No switches were found"
 
@@ -1476,14 +1573,14 @@ def ib_topology_viewer_handler(card, port):
         if ( len(GUIDS[index].split()) > 1 ):
             continue
 
-        st, desc = get_status_output("timeout 10s cat " + path+file_name + "/ibnetdiscover_p_"+ suffix + " | grep -v -i sfb | grep -e ^SW | grep " + GUIDS[index] + "..x")
+        st, desc = get_status_output("timeout 10s cat " + path + file_name + "/ibnetdiscover_p_" + suffix + " | grep -v -i sfb | grep -e ^SW | grep " + GUIDS[index] + "..x")
 
         if (st == 0):
             HCA_ports_count = 0
             switch_ports_count = 0
             desc = desc.split("'")[1]
 
-            st, guid_ports = get_status_output("timeout 10s cat " + path+file_name + "/ibnetdiscover_p_"+ suffix + " | grep -v -i sfb | grep -e ^SW | grep " + GUIDS[index] + "..x | awk '{print $8}'")
+            st, guid_ports = get_status_output("timeout 10s cat " + path + file_name + "/ibnetdiscover_p_" + suffix + " | grep -v -i sfb | grep -e ^SW | grep " + GUIDS[index] + "..x | awk '{print $8}'")
             if (st == 0):
                 guid_ports = guid_ports.split("\n")
                 for guid_port in guid_ports:
@@ -1532,10 +1629,10 @@ def sm_info_handler(card, port):
 
 def sm_status_handler(card, port):
     SmActivity_1=0
-    NoSM=2 
+    NoSM=2
     res = ""
-    
-    for lo in range(0,4): 
+
+    for lo in range(0,4):
         get_status_output("timeout 10s sleep 3")
         st, SmActivity = get_status_output("timeout 10s sminfo -C " + card +" -P " + port + " |awk '{ print $10 }'")
         if (st != 0):
@@ -1557,7 +1654,7 @@ def sm_status_handler(card, port):
         res += "\nMaster SM activity is in progress. SM is alive."
     else:
         res += "\nALERT: Master SM activity has not make any progress. CHECK master SM!"
-    
+
     return res
 
 def sm_version_handler():
@@ -1593,7 +1690,6 @@ def clean_ibnodes(ibnodes, start_string):
 def update_saquery():
     global st_saquery
     st_saquery, SAQUERY = get_status_output("timeout 10s saquery 2>/dev/null")
-
 
 def add_fabric_command_if_exists(command):
     global fabric_commands_dict
@@ -1684,7 +1780,7 @@ def add_fabric_multi_sub_command_if_exists(command):
 def add_internal_file_if_exists(file_full_path):
     # put provided file textual content in result
     status, result = get_status_output("timeout 10s cat " + file_full_path)
-    
+
     # add internal file to files dictionary only if exists
     if (status == 0):
         files_dict[file_full_path] = result
@@ -1699,12 +1795,12 @@ def add_internal_file_if_exists(file_full_path):
 #        External Files Dictionary Handler
 
 # field_name - the field name that will appear in the html
-# fil_name - the name of the file that will be linked to
-# command_output - is the content of the fil_name
+# out_file_name - the name of the file that will be linked to
+# command_output - is the content of the out_file_name
 
-def add_ext_file_handler(field_name, fil_name, command_output):
-    if ( fil_name != "pkglist" and (not "erformance" in fil_name) and (not "sr-iov" in fil_name) ):
-        f = open(path+file_name+"/"+fil_name, 'w')
+def add_ext_file_handler(field_name, out_file_name, command_output):
+    if ( out_file_name != "pkglist" and (not "erformance" in out_file_name) and (not "sr-iov" in out_file_name) ):
+        f = open(path + file_name + "/" + out_file_name, 'w')
         if sys.version_info[0] == 2:
             f.write(command_output)
         elif sys.version_info[0] == 3:
@@ -1712,8 +1808,8 @@ def add_ext_file_handler(field_name, fil_name, command_output):
         f.close()
 
     if not ("mlnx_tune" in field_name):
-        external_files_dict[field_name] = "<td><a href=" + fil_name + ">" + field_name + "</a></td>"
-        available_external_files_collection.append([field_name, fil_name])
+        external_files_dict[field_name] = "<td><a href=" + out_file_name + ">" + field_name + "</a></td>"
+        available_external_files_collection.append([field_name, out_file_name])
 
 def add_external_file_if_exists(field_name, curr_path):
     command_output = ""
@@ -1756,22 +1852,23 @@ def add_external_file_if_exists(field_name, curr_path):
             err_command += "cat " + curr_path
     elif (field_name == "ibnetdiscover"):
         if (is_ib == 0 and no_ib_flag == False):
-            status, command_output = get_status_output("timeout 10s " + ib_res)
+            ibnetdiscover_command = ib_res + " --virt "
+            status, command_output = get_status_output("timeout 10s " + ibnetdiscover_command)
             if (status == 0):
                 add_ext_file_handler("ibnetdiscover", "ibnetdiscover", command_output)
                 for card in active_subnets:
                     for port in active_subnets[card]:
-                        status, command_output = get_status_output("timeout 10s " + ib_res + " -p -C " + card +" -P " + port["port_num"])
-                        suffix =  card +"_" + port["port_num"]
+                        status, command_output = get_status_output("timeout 10s " + ibnetdiscover_command + " -p -C " + card +" -P " + port["port_num"])
+                        suffix =  card + "_" + port["port_num"]
                         if (status == 0):
-                            add_ext_file_handler("ibnetdiscover -p " + suffix, "ibnetdiscover_p_" + suffix, command_output)
+                            add_ext_file_handler("ibnetdiscover --virt -p " + suffix, "ibnetdiscover_p_" + suffix, command_output)
                         else:
                             err_flag = 1
                             err_command = "No 'ibnetdiscover_p' External File\nReason: Couldn't find command: ibnetdiscover -p" + suffix
             else:
                 err_flag = 1
                 err_command += ib_res
-                err_command += "\n\nNo 'ibnetdiscover_p' External File\nReason: Couldn't find command: " + ib_res
+                err_command += "\n\nNo 'ibnetdiscover_p' External File\nReason: Couldn't find command: " + ibnetdiscover_command
         else:
             err_flag = 1
             if (is_ib != 0 and no_ib_flag == True):
@@ -1784,14 +1881,14 @@ def add_external_file_if_exists(field_name, curr_path):
                 err_command += "\n\nNo 'ibnetdiscover_p' External File\nReason: Couldn't find command: which ibnetdiscover"
     elif (field_name == "Installed packages"):
         if (cur_os != "debian"):
-            status, unrelevant_res = get_status_output("rpm -qva --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIZE}\n' | sort  > "+path+file_name+"/pkglist")
+            status, unrelevant_res = get_status_output("rpm -qva --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIZE}\n' | sort  > " + path + file_name + "/pkglist")
         else:
-            status, unrelevant_res = get_status_output("dpkg --list > "+path+file_name+"/pkglist")
+            status, unrelevant_res = get_status_output("dpkg --list > " + path + file_name + "/pkglist")
         if (status == 0):
             add_ext_file_handler(field_name, "pkglist", "")
         else:
             err_flag = 1
-            err_command += "No file " + path+file_name+"/pkglist"
+            err_command += "No file " + path + file_name+"/pkglist"
     elif (field_name == "Performance tuning analyze"):
         status, command_output = get_status_output("timeout 10s cat " + html2_path)
         if (status == 0):
@@ -1818,7 +1915,7 @@ def add_external_file_if_exists(field_name, curr_path):
                 err_command += "\nmlnx_tune tool is available on Mellanox OFED 3.0.0 and above"
             else:
                 add_ext_file_handler(field_name, curr_path, command_output)
-    else:    
+    else:
         status, command_output = get_status_output("timeout 10s " + field_name)
         if (status == 0):
             if "dmesg" in field_name:
@@ -1828,9 +1925,9 @@ def add_external_file_if_exists(field_name, curr_path):
         else:
             err_flag = 1
             err_command += field_name
-    
+
     if (err_flag == 1):
-        f = open(path+file_name+"/err_messages/dummy_external_paths", 'a')
+        f = open(path + file_name + "/err_messages/dummy_external_paths", 'a')
         f.write(err_command)
         f.write("\n\n")
         f.close()
@@ -2126,7 +2223,7 @@ def arrange_other_system_files_section():
 
     if verbose_flag:
         print("\tGenerating other system files section has started")
-    
+
     if is_command_allowed('file: numa_nodes'):
         if verbose_count == 2:
             print("\t\tnuma_node - start")
@@ -2398,7 +2495,7 @@ def arrange_sriov_dicts():
 def get_json_file_name():
     hst, curr_hostname = get_status_output("hostname")
     #curr_hostname = invoke_command(['hostname']).replace('\n', '-')
-    json_file_name = "sysinfo-snapshot-v" + version + "-" + curr_hostname.replace('\n', '-') + date_file
+    json_file_name = "sysinfo-snapshot-v" + version + "-" + curr_hostname.replace('\n', '-') + "-" + date_file
     return json_file_name
 
 file_name = get_json_file_name()
@@ -2407,7 +2504,7 @@ file_name = get_json_file_name()
 ############### Print Handlers ############################
 
 def print_in_process():
-    print("sysinfo-snapshot is still in proccess...please wait till completed successfuly")
+    print("sysinfo-snapshot is still in process...please wait till completed successfully")
     print("Gathering the information may take a while, especially in large networks\n")
 
 def print_destination_out_file():
@@ -2567,13 +2664,13 @@ def hyper_threading():
         else:
             perf_val_dict[key] = "command not found: cat /proc/cpuinfo | grep " + '"' + "cpu cores" + '"'
             return
-   
+
     siblings = siblings.splitlines()
     sib_count = 0
     for line in siblings:
         if represents_int(line.split(" ")[-1]):
             sib_count += int(line.split(" ")[-1])
-    
+
     cpu_cores = cpu_cores.splitlines()
     cores_count = 0
     for line in cpu_cores:
@@ -2663,6 +2760,8 @@ def lspci(check_latest):
             pci_devices[i]["status"] = not_available
             pci_devices[i]["desired_gen"] = not_available
             continue
+
+        card_str = card
         card = card.split("[")[1]
         card = card.split("]")[0]
         card = card.lower()
@@ -2670,7 +2769,7 @@ def lspci(check_latest):
         if (("-ib" in card) or ("pro" in card) or ("x-3" in card) or ("x3" in card) or ("x-4" in card) or ("x4" in card) or ("connectib" in card)):
             pci_devices[i]["desired_gen"] = 3.0
         else:
-            if ("x-5" in card) or ("x5" in card) or ("X-5" in card) or ("x6" in card) or ("X-6" in card) or ("MT27630" in card_str) or ("MT28908" in card_str):
+            if ("x-5" in card) or ("x5" in card) or ("x6" in card) or ("x-6" in card) or ("MT27630" in card_str) or ("MT28908" in card_str):
                 pci_devices[i]["desired_gen"] = 4.0
             elif ("pcie 2.0" in card):
                 pci_devices[i]["desired_gen"] = 2.0
@@ -2690,9 +2789,9 @@ def lspci(check_latest):
                 pci_devices[i]["desired_speed"] = 5.0
                 pci_devices[i]["desired_payload_size"] = 256.0
                 pci_devices[i]["desired_max_read_request"] = 512.0
-            
 
-        if (("-ib" in card) or ("connectib" in card) or ("x4" in card) or ("x-4" in card) or ("x-5" in card) or ("x5" in card) or ("x-6" in card) or ("x6" in card)):
+
+        if (("-ib" in card) or ("connectib" in card) or ("x4" in card) or ("x-4" in card) or ("x-5" in card) or ("x5" in card) or ("x-6" in card) or ("x6" in card) or ("MT27630" in card_str) or ("MT28908" in card_str)):
             pci_devices[i]["desired_width"] = 16.0
 
         st, firmwares_query = get_status_output("mstflint -d " + card_pci + " q | grep  'FW Version\|'^PSID'' ")
@@ -2993,7 +3092,7 @@ def generate_perf_table():
 #    Main Sysinfo-Snapshot HTML #1 Handlers
 #==========================================================
 
-html_path = path + file_name + "/" + file_name + ".html"
+html_path = ""
 html_flag=0
 
 def get_welcome():
@@ -3006,7 +3105,7 @@ def initialize_html(html_flag):
     if (html_flag == 1):
         return
     html_flag = 1
-    html = open(html_path, 'a')
+    html = open(html_path, 'w+')
 
     html.write("<html>")
     html.write("<head><title>" + html_path + "</title></head>")
@@ -3136,20 +3235,20 @@ def html_write_paragraph(html, base, collection, dict, prev_parag_end):
         if ( (collection == available_commands_collection)
             and ( (("fw_ini_dump" in collection[i]) and fw_ini_dump_is_string == False )
             or (("mlxdump" in collection[i]) and mlxdump_is_string == False)
-            or (("mstregdump-func" in collection[i]) and mstreg_dump_is_string == False)
-            or (collection[i] == "ethtool_all_interfaces") ) ):
+            or (("mstdump-func" in collection[i]) and mstreg_dump_is_string == False)
+            or (collection[i] == "ethtool_all_interfaces")  or (collection[i] == "devlink_handler")  ) ):
             html.write("<p>")
-            if (collection[i] == "ethtool_all_interfaces"):
-                ethtool_content = dict[collection[i]]
-                ethtool_content = ethtool_content.split("\n")
-                ethtool_content_final = ""
-                for line in ethtool_content:
+            if (collection[i] == "ethtool_all_interfaces") or (collection[i] == "devlink_handler"):
+                content = dict[collection[i]]
+                content = content.split("\n")
+                content_final = ""
+                for line in content:
                     if "<td><a href=" not in line:
-                        ethtool_content_final += line.replace('<', "&lt;").replace('>', "&gt;") + "\n"
+                        content_final += line.replace('<', "&lt;").replace('>', "&gt;") + "\n"
                     else:
-                        ethtool_content_final += line + "\n"
-                html.write(ethtool_content_final)
-            elif ("fw_ini_dump" in collection[i]):
+                        content_final += line + "\n"
+                html.write(content_final)
+            elif ("fw_ini_dump" in collection[i] or ("mstdump-func" in collection[i])):
                 for value in server_commands_dict[collection[i]]:
                     html.write(value)
                     html.write("&nbsp;&nbsp;&nbsp;&nbsp;")
@@ -3179,13 +3278,11 @@ def build_and_finalize_html():
     available_internal_files_collection.sort()
 
     #=======================BEGIN OF SERVER COMMANDS SECTION ====================
-    
     html_write_section(html, "1. Server Commands: ", available_commands_collection, 1000)
 
     #=======================END OF SERVER COMMANDS SECTION =======================
 
     #=======================BEGIN OF FABRIC DIGNASTICS SECTION ===================
-    
     if (is_ib == 0 and no_ib_flag == False):
         html_write_section(html, "2. Fabric Diagnostic Information: ", available_fabric_commands_collection, 2000)
 
@@ -3199,7 +3296,6 @@ def build_and_finalize_html():
         html_write_section(html, "2. Internal Files: ", available_internal_files_collection, 3000)
 
     #=======================EXTERNAL FILES =======================================
-    
     if (is_ib == 0 and no_ib_flag == False):
         html.write("<h2>4. External Files:</h2>")
     else:
@@ -3209,7 +3305,6 @@ def build_and_finalize_html():
 
     rows = len(available_external_files_collection)//6
     mod_val = len(available_external_files_collection) % 6
-    
     c=0
     r=0
     base=4000
@@ -3312,15 +3407,14 @@ def build_and_finalize_html():
 #    Performance Tuner HTML Handlers
 #==========================================================
 
-html2_path = path + file_name + "/performance-tuning-analyze.html"
+html2_path = ""
 html2_flag=0
 
 def initialize_html2(html2_flag):
     if (html2_flag == 1):
         return
     html2_flag = 1
-    html2 = open(html2_path, 'a')
-    
+    html2 = open(html2_path, 'w+')
     html2.write("<html>")
     html2.write("<head><title>" + html2_path + "</title></head>")
     html2.write("<body><pre>")
@@ -3330,7 +3424,6 @@ def initialize_html2(html2_flag):
     html2.write("<br/>")
     html2.write("<a name=" + '"' + "index" + '"' + "></a><h2>Version: " + perf_version + "</h2>")
     html2.write("<br/><hr/>")
-    
     html2.close()
 
 #----------------------------------------------------------
@@ -3529,7 +3622,6 @@ def build_and_finalize_html2():
     #=======================BEGIN OF SETTINGS SECTION ==========================
 
     html_write_section(html2, "1. Settings Menu: ", perf_setting_collection, 1000)
-    
     #=======================END OF SETTINGS SECTION ============================
 
     #=======================BEGIN OF EXTERNAL FILES SECTION ====================
@@ -3578,7 +3670,7 @@ def build_and_finalize_html2():
 #        SR-IOV HTML Handlers
 #==========================================================
 
-html3_path = path + file_name + "/sr-iov.html"
+html3_path = ""
 html3_flag=0
 
 def initialize_html3(html3_flag):
@@ -3682,13 +3774,13 @@ def confirm_mlnx_cards():
 
 # Create empty log files
 def create_empty_log_files():
-    f = open(path+file_name+"/err_messages/dummy_functions", 'a')
+    f = open(path + file_name + "/err_messages/dummy_functions", 'a')
     f.close()
 
-    f = open(path+file_name+"/err_messages/dummy_paths", 'a')
+    f = open(path + file_name + "/err_messages/dummy_paths", 'a')
     f.close()
 
-    f = open(path+file_name+"/err_messages/dummy_external_paths", 'a')
+    f = open(path + file_name + "/err_messages/dummy_external_paths", 'a')
     f.close()
 
 # Load module if needed and save old mst status
@@ -3697,7 +3789,7 @@ def load_modules():
     global is_MFT_installed
     st, mst_start = get_status_output('mst start')
     if st != 0:
-        print ('MFT is not installed, it is prefered to install MFT and try again.')
+        print ('MFT is not installed, it is preferred to install MFT and try again.')
         is_MFT_installed = False
         return
     is_MFT_installed = True
@@ -3715,7 +3807,7 @@ def generate_output():
     validate_not_file()
     print_in_process()
     confirm_mlnx_cards()
-    
+
     # Create output directories
     ensure_out_dir_existence()
     get_status_output("mkdir " + path + file_name)
@@ -3830,7 +3922,7 @@ def generate_output():
         csvfile.close()
         print("\t----------------------------------------------------\n")
         print("Generating a new configuration file has ended successfully")
-        print("Temporary destination directory is /tmp/\n")
+        print("The temporary destination directory is /tmp/\n")
         remove_unwanted_files()
         return
 
@@ -3871,13 +3963,24 @@ def update_flags(args):
     global config_file_flag
     global isFile
     global csvfile
+    global path
+    global html_path
+    global html2_path
+    global html3_path
+
     isFile = False
 
     if (args.dir):
         path = args.dir
+        html_path = path + file_name + "/" + file_name + ".html"
+        html2_path = path + file_name + "/performance-tuning-analyze.html"
+        html3_path = path + file_name + "/sr-iov.html"
         if (len(path) > 0):
             if (not path.endswith("/")):
                 path = path + "/"
+                html_path = path + file_name + "/" + file_name + ".html"
+                html2_path = path + file_name + "/performance-tuning-analyze.html"
+                html3_path = path + file_name + "/sr-iov.html"
             if (os.path.isfile(path[:-1]) == True):
                 isFile = True
     if (args.perf):
@@ -3885,7 +3988,7 @@ def update_flags(args):
     if (args.firmware):
         fw_flag = True
     if (args.ibdiagnet):
-        ibdiagnet = True
+        ibdiagnet_flag = True
     if (args.no_ib):
         no_ib_flag = True
     if (args.json):
@@ -3928,17 +4031,17 @@ def update_flags(args):
 
     if (args.mtusb):
         mtusb_flag = True
-        # Change Name: mstregdump-func --> mstregdump-func / i2c-mstdump-func
+        # Change Name: mstdump-func --> mstdump-func / i2c-mstdump-func
         try:
-            commands_collection.remove('mstregdump-func')
+            commands_collection.remove('mstdump-func')
         except:
             pass
-        commands_collection.extend(['mstregdump-func / i2c-mstdump-func'])
+        commands_collection.extend(['mstdump-func / i2c-mstdump-func'])
         try:
-            fw_collection.remove('mstregdump-func')
+            fw_collection.remove('mstdump-func')
         except:
             pass
-        fw_collection.extend(['mstregdump-func / i2c-mstdump-func'])
+        fw_collection.extend(['mstdump-func / i2c-mstdump-func'])
         # Change Name: fw_ini_dump --> fw_ini_dump / i2c_fw_ini_dump
         try:
             commands_collection.remove('fw_ini_dump')
