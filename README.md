@@ -16,7 +16,7 @@ By default, the followings are the expected file output when running the script:
 
 4 Specific Requirements:
 The followings are the server/system requirements to run the script:
-* Python 2.7 or Python 3.6.4 installed
+* Python installed
 * Linux based OS
 * Root (super user) privileges
 NOTE: The tool doesn't change any module status during runtime, except for the 'mst module'. If the 'mst module' is stopped, the tool loads it via 'mst start' and revert it to it's initial status via 'mst stop'.
@@ -29,44 +29,50 @@ NOTE: The tool doesn't change any module status during runtime, except for the '
 4. Open the relevant html/text files.
 
 5.1 Script Flags
-  There are many flags (options) for the user to refer to and add. Please see the list of flags below (5.1.1 to 5.1.9).
-  
-5.1.1 d|--dir
+  There are many flags (options) for the user to refer to and add. Please see the list of flags below (5.1.1 to 5.1.14). 
+
+5.1.1	d|--dir
 By default, the destination directory is /tmp. The destination directory can be changed using -d|--dir flags/options. If the destination directory does not exist, the script automatically creates it.
 
-5.1.2 -fw|--firmware
-Firmware related server commands/functions are split into two:
-1. Commands/Functions that are added to the output by default: [mstregdump-func, mlxcables]
-2. Commands/Functions that are not added to the output by default: [itrace, mlxmcg -d, fw_ini_dump, mlxdump]
-The latter commands/functions can be added to the output by providing the '-Fw|' or the '--firmware' flag. You may experience a short delay when running the script if the '-fw|' or '--firmware' flag is provided.
+5.1.2	v|--version
+show the tool's version information and exit.
 
-5.1.3 --pcie
+5.1.3	--no_fw
+do not add firmware commands to the output.
+
+5.1.4	--fsdump
+add fsdump firmware command to the output.
+
+5.1.5	--pcie
 By default, the PCIE commands/functions are not added to the output. They can be added by adding the '--pcie' flag, e.g. 'lspci -vvvxxxxx'.
 
-5.1.4 --config
+5.1.6	--config
 set the customized configuration file path, to choose which commands are approved to run.
 In case a path is not provided, the default file(config.csv) path is for the same directory.
 
-5.1.5 --generate_config
-Set the file path of the generated configuration file, by default all commands are approved to be invoked.
+5.1.7	--generate_config
+Set the file path of the generated configuration file, by default all commands are approved to be invoked. 
 In case a path is not provided, the default file(config.csv) path is for the same directory
 
-5.1.6 --mtusb
+5.1.8	--mtusb
 By default, I2C firmware related server commands/functions are not added to the output. They can be added to the output by providing the '--mtusb' flag.
 
-5.1.7 -no_ib
-By default, IB commands are added to the output. These commands can be removed from the output by providing the flag '-no_ib'.
+5.1.9	-no_ib
+By default, IB commands are added to the output. These commands can be removed from the output by providing the flag '-no_ib'. 
 
-5.1.8 --ibdiagnet
-By default, the 'ibdiagnet' command is not added to the output. It can be added by providing the '--ibdiagnet' flag.
+5.1.10	--openstack
+gather openstack relevant conf and log files
 
-5.1.9 --json
-By default, the JSON output file is not generated. It can be added to the output by providing the '--json' flag. To have the JSON output file, make sure the json python module is installed.
+5.1.11	--ibdiagnet
+By default, the 'ibdiagnet' command is not added to the output. It can be added by providing the '--ibdiagnet' flag. 
 
-5.1.10 -p|--perf
-By default, the "Performance tuning analyze" html file is added to the output. This html file dumps the performance status according to the Performance Tuning for Mellanox Adapters. In addition, it contains the output of the tool 'mlnx_tune'. If you add the '-p|' or the '--perf' flag, the output of the tests below is added to the html output:
-* ib_write_bw
-* ib_write_lat
+5.1.12	--json
+By default, the JSON output file is not generated. It can be added to the output by providing the '--json' flag. To have the JSON output file, make sure the json python module is installed. 
 
-5.1.11 --check_fw
+5.1.13	-p|--perf
+By default, the "Performance tuning analyze" html file is added to the output. This html file dumps the performance status according to the Performance Tuning for Mellanox Adapters. In addition, it contains the output of the tool 'mlnx_tune'. If you add the '-p|' or the '--perf' flag, the output of the tests below is added to the html output: 
+•	ib_write_bw
+•	ib_write_lat
+
+5.1.14	--check_fw
 This flag checks if the current adapter firmware is the latest version released. The expected output is in the performance html file (Internet access is required).
