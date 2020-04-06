@@ -78,3 +78,5 @@ NOTE: The tool doesn't change any module status during runtime, except for the '
 5.1.18	--verbose\
      first verbosity level, available if option is provided only once, lists sections in process.second verbosity level,\
      available if option is provided twice, lists sections and commands in process.\
+5.1.19	--pcie_debug\
+     Generate only PCIE debug information\
