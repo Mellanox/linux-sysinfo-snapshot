@@ -86,4 +86,4 @@ NOTE: The tool doesn't change any module status during runtime, except for the '
 5.1.20  --ufm\
      Add ufm logs to the output.\
 5.1.21  --ibdiagnet_ext\
-    Add ibdiagnet ext command to the output.\
+    Add ibdiagnet ext command to the output.
