@@ -13,6 +13,9 @@ By default, the followings are the expected file output when running the script:
 * "Performance tuning analyze" html file: this file dumps the performance status.
 * "Sysinfo snapshot" html file: this file dumps the server info and status.
 * "SR-IOV" html file: this file dumps all sr-iov related commands/internal files.
+* "commands_txt_output" folder which contains output of each command in a separate file.
+* "Status-log-sysinfo-snapshot" A log which contains each command invoked on the host, if it passed / failed and time taken.
+* "err_messages" folder which contains error message logs.
 
 4 Specific Requirements:
 The followings are the server/system requirements to run the script:
@@ -24,7 +27,7 @@ NOTE: The tool doesn't change any module status during runtime, except for the '
 5 Usage:
 1. Untar the file by invoking: tar -zxvf sysinfo sysinfo-snapshot-<version>.tgz
 2. Run the following command (as admin):
-#./sysinfo-snapshot.py
+# ./sysinfo-snapshot.py
 3. Extract the tar file from the default directory: /tmp.
 4. Open the relevant html/text files.
 
@@ -79,4 +82,8 @@ NOTE: The tool doesn't change any module status during runtime, except for the '
      first verbosity level, available if option is provided only once, lists sections in process.second verbosity level,\
      available if option is provided twice, lists sections and commands in process.\
 5.1.19	--pcie_debug\
-     Generate only PCIE debug information\
+     Generate only PCIE debug information.\
+5.1.20  --ufm\
+     Add ufm logs to the output.\
+5.1.21  --ibdiagnet_ext\
+    Add ibdiagnet ext command to the output.\
