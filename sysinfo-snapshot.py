@@ -67,7 +67,7 @@ def no_log_status_output(command, timeout='10s'):
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.6.1"
+version = "3.6.15"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -1794,6 +1794,13 @@ def get_file_content(file_dir):
         return content
 
 # *******************************************************************
+#            Function to clean string prior to using it as a file name
+def filter_file_name(file_name):
+    forbidden_chars = re.compile('([\/:*?"<||-])')
+    filtered_file_name = forbidden_chars.sub(r'', file_name).replace("\\", "")
+    return filtered_file_name
+
+# *******************************************************************
 #            /sys/class/infiniband handler
 def sys_class_infiniband_handler():
     sys_img_dict = {}
@@ -2857,6 +2864,16 @@ def add_external_file_if_exists(field_name, curr_path):
     command_output = ""
     err_flag = 0
     err_command = "No '" + field_name + "' External File\nReason: Couldn't find command: "
+
+    if (field_name.startswith("var/log")):
+        status, command_output = get_status_output("cat /" + curr_path)
+        if (status == 0):
+            field_name = field_name.replace('/','_')
+            filtered_field_name = filter_file_name(field_name)
+            add_ext_file_handler(field_name, filtered_field_name, command_output)
+        else:
+            err_flag = 1
+            err_command += field_name
     if (field_name == "kernel config"):
         status, command_output = get_status_output("cat " + curr_path)
         if (status == 0):
@@ -3079,12 +3096,6 @@ def arrange_fabric_commands_section():
 def arrange_internal_files_section():
     if verbose_flag:
         print("\tGenerating internal files section has started")
-    st, var_log_files = get_status_output("ls /var/log/")
-    if st == 0:
-        var_log_files = var_log_files.splitlines()
-        for file in var_log_files:
-            if file.startswith('dmesg') or file.startswith('messages') or file.startswith('boot'):
-                internal_files_collection.append('/var/log/'+ file +'')
     # Internal files with static paths handlers
     for static_path in internal_files_collection:
         if is_command_allowed("file: " + static_path):
@@ -3171,6 +3182,12 @@ def arrange_external_files_section():
 
     if verbose_flag:
         print("\tGenerating external files section has started")
+    st, var_log_files = get_status_output("ls /var/log/")
+    if st == 0:
+        var_log_files = var_log_files.splitlines()
+        for file in var_log_files:
+            if file.startswith('dmesg') or file.startswith('messages') or file.startswith('boot'):
+                add_external_file_if_exists('var/log/'+ file,'var/log/'+ file)
     # add external files if exist to the provided external section e.g. "kernel config"
     for pair in external_files_collection:
         if "biosdecode" in pair[0] and blueos_flag:
