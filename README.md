@@ -9,14 +9,14 @@ Automated sysinfo-snapshot tool is designed to take a snapshot of all the config
 The Sysinfo Snapshot is a python script that gathers system information and places it into a tar file.
 
 3. Script Expected Output:
-By default, the followings are the expected file output when running the script:\
-* "Performance tuning analyze" html file: this file dumps the performance status.\
-* "Sysinfo snapshot" html file: this file dumps the server info and status.\
-* "SR-IOV" html file: this file dumps all sr-iov related commands/internal files.\
-* "commands_txt_output" folder which contains output of each command in a separate file.\
-* "Status-log-sysinfo-snapshot" A log which contains each command invoked on the host, if it passed / failed and time taken.\
-* commands_txt_output directory - a collection of commands output saved into files\
-* "err_messages" folder which contains error message logs.\
+By default, the followings are the expected file output when running the script:
+* "Performance tuning analyze" html file: this file dumps the performance status.
+* "Sysinfo snapshot" html file: this file dumps the server info and status.
+* "SR-IOV" html file: this file dumps all sr-iov related commands/internal files.
+* "commands_txt_output" folder which contains output of each command in a separate file.
+* "Status-log-sysinfo-snapshot" A log which contains each command invoked on the host, if it passed / failed and time taken.
+* commands_txt_output directory - a collection of commands output saved into files
+* "err_messages" folder which contains error message logs.
 
 4 Specific Requirements:\
 The followings are the server/system requirements to run the script:
@@ -24,13 +24,12 @@ The followings are the server/system requirements to run the script:
 * Linux based OS
 * Root (super user) privileges
 NOTE: The tool doesn't change any module status during runtime, except for the 'mst module'. If the 'mst module' is stopped, the tool loads it via 'mst start' and revert   \
-it to it's initial status via 'mst stop'.  \
+it to it's initial status via 'mst stop'.
 
 5.1 Running the tool without a configuration file:
 Running Sysinfo Snapshot without a configuration file will gather the relevant information and   \
 configuration on the server and Nvidia's adapters, By adding additional flags, the user will have more   \
-control on the generated output, for more detailed information regarding the flags, please refer to   \
-section 5.3 - Script flags.\
+control on the generated output, for more detailed information regarding the flags, please refer to  section 5.3 - Script flags.
 
 To run the script without a configuration:\
 1. Untar the file by invoking - tar -zxvf sysinfo-snapshot-<version>.tgz\
@@ -39,12 +38,12 @@ To run the script without a configuration:\
 3. Extract the tar file from the default directory: /tmp/ \
 4. Open the relevant html/text files \
 
-5.2 Running the tool with a configuration file   \
-Running Sysinfo Snapshot with a configuration file will provide a more advanced control on the   \
-gathered information and configuration on the server and Nvidia's adapters, the configuration is   \
-intended to list all commands that are gathered by the Sysinfo Snapshot tool.  \
-Modifying the configuration file will allow the user to control which commands are allowed to run on   \
-the host running the tool.  \
+5.2 Running the tool with a configuration file 
+Running Sysinfo Snapshot with a configuration file will provide a more advanced control on the
+gathered information and configuration on the server and Nvidia's adapters, the configuration is 
+intended to list all commands that are gathered by the Sysinfo Snapshot tool.
+Modifying the configuration file will allow the user to control which commands are allowed to run on 
+the host running the tool.
 	
 To run the script with a configuration file:
 1. Untar the file by invoking - tar -zxvf sysinfo-snapshot-<version>.tgz
@@ -134,24 +133,24 @@ Modifying the configuration file is done by only changing the values under "appr
 The allowed values - "yes" or "no". \
 To run the sysinfo-snapshot using the modified configuration file, please add the --config flag. \
 Note: Adding additional flags while generating the configuration file will not change the  \
-defualt allowed values. \
+defualt allowed values.
 
 6.2 Generated config file format \
 • First line has the sysinfo-snapshot generated version,  \
-e.g sysinfo-snapshot version 3.7.0. \
+e.g sysinfo-snapshot version 3.7.0.
 
 • csv configuration file format. \
-Command : ommands / file / Functions  \
+Command : ommands / file / Functions 
 - Commands: nerated automatically by the system \
 Approved: "is" or "no" \
 related flag: By default all the commands that run will be marked as yes for execution \
-              generated automatically by the system. \
+              generated automatically by the system.
 
 please refer to Script Flags for more information.  \
-• Files and directories are annotated with "file: " prefix, to help identifying them.  \
+• Files and directories are annotated with "file: " prefix, to help identifying them.
 
 6.3 Functions \
-Generated functions invoke multiple related queries that are gathered from the customer server. \
+Generated functions invoke multiple related queries that are gathered from the customer server.
 
 ibdev2pcidev: Map each IB device in /sys/class/infiniband/ to it PCI device \
 ethtool_all_interfaces: Gather the output of ethtool command on all relevant ethernet interfaces  \
@@ -215,6 +214,6 @@ congestion_control_parameters: Gather relevant counter and hardware counter info
 networkManager_system_connections: Gather NetworkManager information:  \
 	systemctl status NetworkManager  \
 	get relevant connection files from:  \
-	/etc/NetworkManager/system-connections/  \
+	/etc/NetworkManager/system-connections/
  
 Note, Commands that are not listed as function in the above list are invoked directly as a shell command. 
