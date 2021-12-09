@@ -140,14 +140,12 @@ defualt allowed values.
 e.g sysinfo-snapshot version 3.7.0.
 
 • csv configuration file format. \
-Command : ommands / file / Functions 
-- Commands: nerated automatically by the system \
+
+Commands: generated automatically by the system \
 Approved: "is" or "no" \
 related flag: By default all the commands that run will be marked as yes for execution \
-              generated automatically by the system.
-
-please refer to Script Flags for more information.  \
-• Files and directories are annotated with "file: " prefix, to help identifying them.
+              generated automatically by the system. please refer to Script Flags for more information.  \
+Files and directories are annotated with "file: " prefix, to help identifying them.
 
 6.3 Functions \
 Generated functions invoke multiple related queries that are gathered from the customer server.
