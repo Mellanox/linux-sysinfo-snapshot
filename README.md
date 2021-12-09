@@ -197,7 +197,7 @@ get_numa_node_sys_files_exclude_uevent_files: Invoke the following command:  \
 	"find /sys | grep numa_node | grep -v uevent"  \
 se_linux_status: Gather SELinux configuration from command getenforce output  \
 ip_forwarding: Gather relevant information from:  \
-	• /proc/sys/net/ipv4  \
+	/proc/sys/net/ipv4  \
 	/proc/sys/net/ipv6/  \
 perf_samples: Gather relevant perf samples information from:  \
 	ethtool -s and /sys/class/infiniband/device counters  \
