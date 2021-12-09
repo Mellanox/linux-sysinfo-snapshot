@@ -6,7 +6,7 @@
 #            Jeries Haddad     jeriesh@mellanox.com -- Modified: 2019
 __author__ = 'nizars'
 
-
+import warnings
 import subprocess
 import sys
 import re
@@ -32,10 +32,13 @@ try:
 except ImportError:
     json_found = False
 
+warnings.filterwarnings('ignore')
 
 COMMAND_CSV_HEADER = 'Command'
 INVOKED_CSV_HEADER = 'Approved'
+FLAG_RELATED_HEADER = "related flag"
 DEFAULT_CONFIG_PATH = './config.csv'
+DEFAULT_CONFIG_FILENAME = "/config.csv"
 DEFAULT_PATH = '/tmp/'
 
 ######################################################################################################
@@ -68,7 +71,7 @@ def no_log_status_output(command, timeout='10s'):
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.6.5"
+version = "3.7.0"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -86,7 +89,6 @@ active_subnets = {}
 installed_cards_ports = {}
 pf_devices = []
 asap_devices = []
-mlnx_pci_devices = []
 mtusb_devices = []
 vf_pf_devices = []
 config_dict = {}
@@ -102,6 +104,7 @@ config_path = ""
 parser = ""
 section_count=1
 ibdiagnet_res = ""
+file_name = ""
 ibdiagnet_is_invoked = False
 st_saquery = 1
 sys_class_net_exists = False
@@ -160,6 +163,7 @@ openstack_flag = False
 asap_flag = False
 asap_tc_flag = False
 rdma_debug_flag = False
+gpu_flag = False
 # no_fw_flag = True, means not to add fw_collection commands to the out file
 # no_fw_flag = False, means to add fw_collection commands to the out file
 # no_fw_flag can be converted to True by running the tool with --no_fw flag
@@ -215,35 +219,48 @@ ufm_flag = False
 ######################################################################################################
 #                                 GLOBAL LISTS
 
-fw_collection = ["fwtrace", "mlxmcg -d", "mlxdump", "mst-func"]
+fw_collection = ["fwtrace", "mlxmcg -d", "mlxdump", "mst_commands_query_output"]
 pcie_collection = ["lspci -vvvxxxxx",]
-PCIE_debugging_collection =  ["dmidecode", "performance_lspci", "lscpu", "mlxlink / mstlink", "lspci -tv", "lspci -vvvxxxxx","mst-func","dmesg" ]
+ufm_collection = ["ufm_logs"]
+fsdump_collection = ["mlxdump"]
+asap_collection = ["asap_parameters"]
+asap_tc_collection = ["asap_tc_information"]
+rdma_debug_collection = ["rdma_tool"]
+gpu_command_collection = ["nvidia-smi topo -m","nvidia-smi","lspci -tv |grep 'NVIDIA' -A7","nvidia-smi -q -d clock","nvidia-smi --format=csv --query-supported-clocks=gr,mem","ib_write_bw -h | grep -i cuda","modinfo nv_peer_mem"\
+,"/usr/local/cuda/extras/demo_suite/deviceQuery","/etc/init.d/nv_peer_mem status","/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --htod"\
+,"/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --dtoh"]
+PCIE_debugging_collection =  ["dmidecode", "performance_lspci", "lscpu", "mlxlink / mstlink","mst_commands_query_output","dmesg" ]
 ib_collection = []
-commands_collection = ["ip -s -s link show", "ip -s -s addr show", "rpm -qa --last", "ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", \
+commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", \
                         "df -lh", "/opt/mellanox/ethtool/sbin/ethtool --version", "ethtool_version", "ethtool_all_interfaces", "fdisk -l", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", \
                         "initctl list", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod",  "lspci -tv", "lspci -vv", \
-                        "mount", "mst-func", "asap", "asap_tc","rdma_tool",  "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info",  "ip route show table all", "service --status-all", \
-                        "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all",  "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname -a", "uptime", \
-                        "yy_MLX_modules_parameters", "yy_IB_modules_parameters", "zz_proc_net_bonding_files", "zz_sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", \
-                        "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "mlxcables --DDM/--read_all_regs", "ip -6 addr show", "ip -6 route show", "modinfo", "show_pretty_gids", "flint -v",  "mstflint -v","dkms status",\
+                        "mount", "mst_commands_query_output", "asap_parameters", "asap_tc_information","rdma_tool",  "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info",  "ip route show table all", "service --status-all", \
+                        "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all",  "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname", \
+                        "yy_MLX_modules_parameters", "sysclass_IB_modules_parameters", "proc_net_bonding_files", "sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", \
+                        "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "ip -6 addr show", "ip -6 route show", "modinfo", "show_pretty_gids", "flint -v",  "mstflint -v","dkms status",\
                         "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status", "mlxlink / mstlink", "mget_temp_query", "mlnx_qos_handler", "devlink_handler", "se_linux_status", \
-                        "ufm_logs", "virsh list --all", "virsh vcpupin", "/sys/class/infiniband", "/sys/class/net","roce counters","route -n","numastat -n","NetworkManager --print-config","/etc/NetworkManager/system-connections/","virsh version","$USER","mlxreg -d --reg_name ROCE_ACCL --get"\
-                        ,"/sys/kernel/debug/mlx5/cc_params/","/sys/class/net/ecn","lsblk","journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"]
+                        "ufm_logs", "virsh list --all", "virsh vcpupin", "sys_class_infiniband_ib_paameters", "sys_class_net_ecn_ib","roce counters","route -n","numastat -n","NetworkManager --print-config","networkManager_system_connections","virsh version","USER","mlxreg -d --reg_name ROCE_ACCL --get"\
+                        ,"congestion_control_parameters","ecn_configuration","lsblk", "journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
+                        ,"nvidia-smi topo -m", "nvidia-smi", "lspci -tv |grep 'NVIDIA' -A7", "nvidia-smi -q -d clock", "nvidia-smi --format=csv --query-supported-clocks=gr,mem", "ib_write_bw -h | grep -i cuda", "modinfo nv_peer_mem",\
+                        "/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --dtoh", "/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --htod"\
+                        , "/etc/init.d/nv_peer_mem status","/usr/local/cuda/extras/demo_suite/deviceQuery","ibstatus","ibstat","ucx_info -v"]
 available_commands_collection = [[],[]]
 available_PCIE_debugging_collection_dict = {}
-fabric_commands_collection = ["ibstatus", "ib_mc_info_show", "sm_version", "Multicast_Information", "ibstat", "perfquery_cards_ports"]
+fabric_commands_collection = [ "ib_mc_info_show", "sm_version", "Multicast_Information", "perfquery_cards_ports"]
 fabric_multi_sub_commands_collection = ["ibdiagnet", "ib_find_bad_ports", "ib_find_disabled_ports", "ib_topology_viewer", "ibhosts", "ibswitches", "sminfo", "sm_status", "sm_master_is", "ib_switches_FW_scan"]
 available_fabric_commands_collection = []
-internal_files_collection = ["/sys/devices/system/clocksource/clocksource0/current_clocksource", "/sys/fs/cgroup/net_prio/net_prio.ifpriomap", "/etc/opensm/partitions.conf","/etc/opensm/opensm.conf", "/etc/infiniband/info", "/etc/infiniband/openib.conf", "/etc/default/mlnx_snap", "/etc/modprobe.d/vxlan.conf", "/etc/security/limits.conf", "/boot/grub/grub.cfg","/boot/grub2/grub.cfg","/boot/grub/grub.conf","/boot/grub2/grub.conf", "/boot/grub/menu.lst","/boot/grub2/menu.lst","/etc/default/grub", "/etc/host.conf", "/etc/hosts", "/etc/hosts.allow", "/etc/hosts.deny", "/etc/issue", "/etc/modprobe.conf", "/etc/ntp.conf", "/etc/resolv.conf", "/etc/sysctl.conf", "/etc/tuned.conf","/etc/dhcp/dhclient.conf","/etc/yum.conf","/etc/bluefield_version", "/proc/cmdline", "/proc/cpuinfo", "/proc/devices", "/proc/diskstats", "/proc/dma", "/proc/meminfo", "/proc/modules", "/proc/mounts", "/proc/net/dev_mcast", "/proc/net/igmp", "/proc/partitions", "/proc/stat", "/proc/sys/net/ipv4/igmp_max_memberships", "/proc/sys/net/ipv4/igmp_max_msf","/proc/uptime", "/proc/version", "/etc/rdma/rdma.conf","/etc/systemd/system/mlnx_interface_mgr@.service","/etc/systemd/system/sysinit.target.wants/openibd.service","/etc/systemd/system/network-online.target.wants/NetworkManager-wait-online.service", "/proc/net/softnet_stat", "/proc/buddyinfo", "/proc/slabinfo", "/proc/pagetypeinfo"]
+internal_files_collection = ["/sys/devices/system/clocksource/clocksource0/current_clocksource", "/sys/fs/cgroup/net_prio/net_prio.ifpriomap", "/etc/opensm/partitions.conf","/etc/opensm/opensm.conf", "/etc/default/mlnx_snap","/etc/modprobe.d/vxlan.conf", "/etc/security/limits.conf", "/boot/grub/grub.cfg","/boot/grub2/grub.cfg","/boot/grub/grub.conf","/boot/grub2/grub.conf", "/boot/grub/menu.lst","/boot/grub2/menu.lst","/etc/default/grub", "/etc/host.conf", "/etc/hosts", "/etc/hosts.allow", "/etc/hosts.deny", "/etc/issue", "/etc/modprobe.conf","/etc/udev/udev.conf" ,"/etc/ntp.conf", "/etc/resolv.conf", "/etc/sysctl.conf", "/etc/tuned.conf","/etc/dhcp/dhclient.conf","/etc/yum.conf","/etc/bluefield_version", "/proc/cmdline", "/proc/cpuinfo", "/proc/devices", "/proc/diskstats", "/proc/dma", "/proc/meminfo", "/proc/modules", "/proc/mounts", "/proc/net/dev_mcast", "/proc/net/igmp", "/proc/partitions", "/proc/stat", "/proc/sys/net/ipv4/igmp_max_memberships", "/proc/sys/net/ipv4/igmp_max_msf","/proc/uptime", "/proc/version", "/etc/rdma/rdma.conf","/etc/systemd/system/mlnx_interface_mgr@.service","/etc/systemd/system/sysinit.target.wants/openibd.service","/etc/systemd/system/network-online.target.wants/NetworkManager-wait-online.service", "/proc/net/softnet_stat", "/proc/buddyinfo", "/proc/slabinfo", "/proc/pagetypeinfo"]
 available_internal_files_collection = []
 # [field_name, file_name to cat]
-external_files_collection = [["kernel config", "/boot/config-$(uname -r)"], ["config.gz", "/proc/config.gz"],["zoneinfo","/proc/zoneinfo"],[ "interrupts","/proc/interrupts"],["lstopo-no-graphics","lstopo-no-graphics"] ,["lstopo-no-graphics -v -c","lstopo-no-graphics -v -c"],["lspci","lspci"],["lspci -vvvxxxxx","lspci -vvvxxxxx"],["lspci -xxxvvv","lspci -xxxvvv"],["ps -eLo","ps -eLo"],["sysctl -a","sysctl -a"], ["netstat -anp","netstat -anp"] ,["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR-IOV", ""],["other_system_files",""],["numa_node",""]]
+external_files_collection = [["kernel config", "/boot/config-$(uname -r)"],["mlxcables --DDM/--read_all_regs","cables/mlxcables_options_output"] ,["config.gz", "/proc/config.gz"],["zoneinfo","/proc/zoneinfo"],[ "interrupts","/proc/interrupts"],["lstopo-no-graphics","lstopo-no-graphics"] ,["lstopo-no-graphics -v -c","lstopo-no-graphics -v -c"],["lspci","lspci"],["lspci -vvvxxxxx","lspci -vvvxxxxx"],["lspci -xxxvvv","lspci -xxxvvv"],["ps -eLo","ps -eLo"],["ucx_info -c", "ucx_info -c"],["ucx_info -f","ucx_info -f"],["sysctl -a","sysctl -a"], ["netstat -anp","netstat -anp"] ,["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR_IOV", ""],["other_system_files",""],["numa_node",""]]
 available_external_files_collection = []
 copy_under_files = [["etc_udev_rulesd", "/etc/udev/rules.d/"], ["lib_udev_rulesd", "/lib/udev/rules.d/"]]
 copy_openstack_dirs  = [["conf_nova", "/var/lib/config-data/puppet-generated/nova_libvirt"], ["conf_nuetron", "/var/lib/config-data/puppet-generated/neutron/"]]
 copy_openstack_files  = [["logs_nova", "/var/log/containers/nova/nova-compute.log"], ["logs_neutron", "/var/log/containers/neutron/openvswitch-agent.log"]]
 critical_failed_commands = [] # Critical commands that failed
 running_warnings = []
+#commands that are part of higher chain commands ,used when generating config file
+sub_chain_commands = ["file: var/log/syslog","file: var/log/messages","file: var/log/boot.log","mlnx_tune","ib_write_bw_test","latency","perf_samples","mlxfwmanager --online-query-psid","file: /sys/class/infiniband/*/iov","file: /sys/class/infiniband/*/device/"]
 critical_collection = PCIE_debugging_collection # List of all critical commands
 critical_collection.append("general_fw_command_output")
 critical_collection.append("mstcommand_d_handler")
@@ -259,18 +276,21 @@ supported_os_collection = ["redhat", "suse", "debian"]
 # A function to log every command invoked on the host: command, passed/filed, time taken
 # A critical command is a command which is used for PCIE debugging. Found in PCIE_debugging_collection
 
-def log_command_status(parent, command, status, time_taken):
+def log_command_status(parent, command, status, res, time_taken,invoke_time):
     global missing_critical_info
     log = open("/tmp/status-log-" + file_name, 'a')
 
     if status == 0:
-        log.write(command + " ---- " + "PASSED, time taken: " + time_taken + "\n" )
+        log.write(str(invoke_time) + ":" + command + " ---- " + "PASSED, time taken: " + time_taken + "\n" )
     else:
+        failed_reason = "FAILED"
+        if "not found" in res.lower() or "no such file or directory" in res.lower():
+            failed_reason = "NOT FOUND"
         if parent in critical_collection:
             if not missing_critical_info:
                 missing_critical_info = True
-            critical_failed_commands.append(command + " ---- " + "FAILED")
-        log.write(command + " ---- " + "FAILED, time taken: " + time_taken + "\n")
+            critical_failed_commands.append(command + " ---- " + failed_reason)
+        log.write(str(invoke_time) + ":" + command + " ---- " + failed_reason + ", time taken: " + time_taken + "\n")
     log.close()
 
 #*****************************************************************************************************
@@ -315,6 +335,7 @@ def arrange_command_status_log():
 def log(f):
     def wrap(*args):
         time1 = time.time()
+        invoke_time = datetime.datetime.now()
         ret = f(*args)
         time2 = time.time()
         st = ret[0]
@@ -322,7 +343,7 @@ def log(f):
         time_taken = '{0:.3f}'.format((time2-time1))
         invoked_command = args[0]
         parent = inspect.stack()[1][3] # parent function who called the command
-        log_command_status(parent, invoked_command, st, time_taken)
+        log_command_status(parent, invoked_command, st,res ,time_taken,invoke_time)
         return ret
     return wrap
 
@@ -330,6 +351,10 @@ def log(f):
 def get_status_output(command, timeout='10s'):
     command = 'timeout '+ timeout + ' ' + command
     try:
+        if " cat " in command:
+            filePath = command.split(" cat ")[1]
+            if os.path.exists(filePath) and  (not os.access(filePath, os.R_OK)):
+                return 1, "Cant read file "  + filePath + " due to missing permissions"
         p = subprocess.Popen([command], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         stdout, stderr = p.communicate()
         return p.returncode, standarize_str(stdout)
@@ -568,24 +593,36 @@ class mlnx_device:
         return res
 
 #return true if command should be invoked. and added to dict in case we are generating new file
-def is_command_allowed(config_key):
+def is_command_allowed(config_key,related_flag=""):
     global config_dict
 
     if generate_config_flag:
-        config_dict[config_key] = 'yes'
+        if not config_key in config_dict:
+            approved = "yes"
+            if related_flag:
+                related_flags = related_flag.split("/")
+                for flag in related_flags:
+                    if not "no" in flag.lower()  :
+                        flag = flag.strip()
+                        approved = "no"
+
+            config_dict[config_key] = {"approved":approved,"related flag":related_flag}
         return False
 
     if config_key in config_dict:
-        if config_file_flag and config_dict[config_key].lower() != 'yes':
+        if config_file_flag and config_dict[config_key]["approved"].lower() != 'yes':
             return False
         else:
             return True
+    else:
+        if config_file_flag :
+            print("Warning: following command not collected it's missing in config file :\n" + config_key + ' \n Please make sure that you are using sysinfo-snapshot version (' + version + ') to generate config file (config.csv)  \n')
+            running_warnings.append("following command not collected it's missing in config file :\n" + config_key + "\n")
     return True
 
 def update_net_devices():
     global pf_devices
     global asap_devices
-    global mlnx_pci_devices
     global mtusb_devices
     global vf_pf_devices
     global all_net_devices
@@ -633,8 +670,6 @@ def update_net_devices():
         if  "function" in lspci_device.lower():
              if not device in vf_pf_devices:
                 vf_pf_devices.append(device)
-        if not device  in mlnx_pci_devices:
-            mlnx_pci_devices.append(device)
         # e.g lrwxrwxrwx  1 root root 0 Oct 26 15:51 ens11f0 -> ../../devices/pci0000:80/0000:80:03.0/0000:81:00.0/net/ens11f0
         match = re.findall(device + '\/net\/([\w.-]+)',all_interfaces)
         if match:
@@ -977,12 +1012,13 @@ def mlxdump_handler():
     if not is_MFT_installed:
         return "MFT is not installed, please install MFT and try again."
 
-    if (len(mlnx_pci_devices) < 1):
+    if (len(pci_devices) < 1):
         return "There are no devices"
 
     options = ["fsdump"]
     temp = '_run_'
-    for device in mlnx_pci_devices:
+    for pci_device in pci_devices:
+        device = pci_device["device"]
         if device in vf_pf_devices:
             continue
         if not "mtusb" in device:
@@ -1005,8 +1041,6 @@ def add_mlxdump_links():
 #        ASAP Handlers
 
 def asap_handler():
-    if (asap_flag == False):
-        return 1,0
     result = []
     is_all_failed = True
     with open(path + file_name + "/asap/ovs_dpctl_dump_flows", "w+") as outF:
@@ -1048,7 +1082,7 @@ def asap_handler():
                     outF.write(cmd)
                     st, res = get_status_output(cmd  + " >> " + path + file_name + "/asap/ovs_dpctl_dump_flows_bridges", '300s')
                     if st != 0:
-                        outF.write("Could not run: ovs-dpctl tc qdisc show")
+                        outF.write("Could not run: ovs-dpctl dump-flows")
                     else:
                         is_all_failed = False
     result.append("<td><a href=asap/ovs_dpctl_dump_flows_bridges> ovs_dpctl_dump_flows_bridges </a></td>")
@@ -1060,8 +1094,6 @@ def asap_handler():
         return 0,result
 
 def asap_tc_handler():
-    if (asap_tc_flag == False):
-        return 1,0
     if not asap_devices:
         running_warnings.append("--asap_tc flag was provided but there's no interfaces found.")
         return 1, "No interfaces were found"
@@ -1088,8 +1120,6 @@ def asap_tc_handler():
 #            rdma tool Handler
 
 def rdma_tool_handler():
-    if (rdma_debug_flag == False):
-        return 1,0
     if os.path.exists("/opt/mellanox/iproute2/sbin/rdma") == False :
         err = "--rdma_debug flag was provided but /opt/mellanox/iproute2/sbin/rdma dose not exsist. "
         running_warnings.append(err)
@@ -1148,12 +1178,13 @@ def fwtrace_handler():
     if not is_MFT_installed:
         return "MFT is not installed, please install MFT and try again."
 
-    if (len(mlnx_pci_devices) < 1):
+    if (len(pci_devices) < 1):
         return "There are no devices"
 
     options = ["-i all --tracer_mode FIFO"]
     fwtrace = ""
-    for device in mlnx_pci_devices:
+    for pci_device in pci_devices:
+        device = pci_device["device"]
         if device.split('.')[1].strip() != "0":
             continue
         if device in vf_pf_devices:
@@ -1214,12 +1245,7 @@ def mlxcables_options_handler():
             f.write(res)
     else:
         return 1, "Error generating mlxcables output - unable to make directory: /cables"
-
-    if with_inband_flag:
-        mlxcables_out.append("<td><a href=\"cables/mlxcables_options_output\">mlxcables_options_output</a></td>")
-        return 0, mlxcables_out
-    else:
-        return 0, res
+    return 0, res
 
 def mlxcables_standard_handler():
     global are_inband_cables_loaded
@@ -1317,7 +1343,7 @@ def mstcommand_d_handler(command,pcie_debug = False):
         if not is_MFT_installed:
             return "MFT is not installed, please install MFT and try again."
 
-    if (len(mlnx_pci_devices) < 1):
+    if (len(pci_devices) < 1):
         return "There are no devices"
     suffix_list = []
     if command == "mlxconfig":
@@ -1335,8 +1361,8 @@ def mstcommand_d_handler(command,pcie_debug = False):
         mst_status_rs, mst_status_output = get_status_output("mst status -v")
     else:
         mst_status_rs, mst_status_output = get_status_output("mst status")
-
-    for device in mlnx_pci_devices:
+    for pci_device in pci_devices:
+        device = pci_device["device"]
         if is_MFT_installed:
             if device  not in mst_status_output:
                 continue
@@ -1344,6 +1370,8 @@ def mstcommand_d_handler(command,pcie_debug = False):
             if device in vf_pf_devices:
                 continue
         if "cable" in device:
+            continue
+        if command == "mlxmcg" and not ("ConnectX-3" in pci_device["name"] or "ConnectX-3 Pro" in  pci_device["name"] ):
             continue
         for suffix in suffix_list:
             number_of_runs = 1
@@ -1646,7 +1674,7 @@ def generate_mst_dumps(card, sleep_period, mstregdump_out, mst_status_output,tem
             time.sleep(sleep_period)
 
 #**********************************************************
-#        mst-func Handlers
+#        mst_commands_query_output Handlers
 def mst_func_handler():
     all_devices = []
     mstregdump_out = []
@@ -1654,15 +1682,16 @@ def mst_func_handler():
     threads_logs = []
     threads_dumps = []
 
-    if (len(mlnx_pci_devices) < 1):
+    if (len(pci_devices) < 1):
         mstregdump_out.append("There are no Mellanox cards.\n")
         return 2, mstregdump_out
-    all_devices = mlnx_pci_devices
+    for pci_device in pci_devices:
+        all_devices.append(pci_device["device"])
     if mtusb_flag:
         if len(mtusb_devices) < 1:
             mstregdump_out.append("There are no MTUSB devices.\n")
         else:
-            all_devices = mlnx_pci_devices + mtusb_devices
+            all_devices += mtusb_devices
 
     mst_status_rs, mst_status_output = get_status_output("mst status")
     temp = '_run_'
@@ -1784,7 +1813,7 @@ def zz_files_handler(root_dir):
     return 0, res
 
 #**********************************************************
-#             yy IB Modules Parameters Handler
+#            yy IB Modules Parameters Handler
 
 def yy_ib_modules_parameters_handler():
     main_path = "/sys/module/"
@@ -1815,9 +1844,9 @@ def yy_ib_modules_parameters_handler():
 def add_txt_command_output(command, output):
     forbidden_chars = re.compile('([\/:*?"<||-])')
     clean_file_name = forbidden_chars.sub(r'', command).replace("\\", "") # clean the file name
+    clean_file_name = clean_file_name.replace(" ", "_")
+    clean_file_name = clean_file_name.replace("__", "_")
     full_path = path + file_name + "/commands_txt_output/" + clean_file_name + ".txt"
-    if "lspci" in command:
-        full_path = path + file_name + "/lspci_output/" + clean_file_name
     command_file = open(full_path, 'w')
     command_file.write("Invoked Command: " + command + "\n")
     command_file.write(output)
@@ -1904,21 +1933,21 @@ def sys_class_net_handler():
         return 0, res
 # *******************************************************************
 #            Ecn configuration
-def enc_configuration_handler():
+def ecn_configuration_handler():
     res = []
     if os.path.exists("/sys/class/net"):
         for indir in os.listdir("/sys/class/net/"):
             if( os.path.exists("/sys/class/net/" + indir + "/ecn")):
-                if(not os.path.exists(path + file_name + "/ECN/")):
-                    no_log_status_output("mkdir " + path + file_name + "/ECN" )
-                if(not os.path.exists(path + file_name + "/ECN/config")):
-                    no_log_status_output("mkdir " + path + file_name + "/ECN/config" )
+                if(not os.path.exists(path + file_name + "/ecn/")):
+                    no_log_status_output("mkdir " + path + file_name + "/ecn" )
+                if(not os.path.exists(path + file_name + "/ecn/config")):
+                    no_log_status_output("mkdir " + path + file_name + "/ecn/config" )
                 for root, dirs, files in os.walk("/sys/class/net/" + indir + "/ecn"):
-                    with open(path + file_name + "/ECN/config/" + indir, "a+") as outF:
+                    with open(path + file_name + "/ecn/config/" + indir, "a+") as outF:
                         for file in files:
                             outF.write( os.path.join(root,file) + "= ")
                             outF.write(get_file_content( os.path.join(root,file))+ "\n\n")
-                res.append("<td><a href='ECN/config/" + indir + "'> " + indir + " </a></td>")
+                res.append("<td><a href='ecn/config/" + indir + "'> " + indir + " </a></td>")
     else:
         return 1, "/sys/class/net dose not exist"
     if res:
@@ -1933,16 +1962,17 @@ def congestion_control_parameters_handler():
     if os.path.exists("/sys/kernel/debug/mlx5"):
         for indir in os.listdir("/sys/kernel/debug/mlx5/"):
             if( os.path.exists("/sys/kernel/debug/mlx5/" + indir + "/cc_params")):
-                if(not os.path.exists(path + file_name + "/ECN/")):
-                    no_log_status_output("mkdir " + path + file_name + "/ECN" )
-                if(not os.path.exists(path + file_name + "/ECN/debug")):
-                    no_log_status_output("mkdir " + path + file_name + "/ECN/debug" )
+                if(not os.path.exists(path + file_name + "/ecn/")):
+                    no_log_status_output("mkdir " + path + file_name + "/ecn" )
+                if(not os.path.exists(path + file_name + "/ecn/debug")):
+                    no_log_status_output("mkdir " + path + file_name + "/ecn/debug" )
                 for root, dirs, files in os.walk("/sys/kernel/debug/mlx5/" + indir + "/cc_params"):
-                    with open(path + file_name + "/ECN/debug/" + indir, "a+") as outF:
+                    filename = indir.replace(":","_")
+                    with open(path + file_name + "/ecn/debug/" + filename, "a+") as outF:
                         for file in files:
                             outF.write( os.path.join(root,file) + "= ")
                             outF.write(get_file_content( os.path.join(root,file))+ "\n\n")
-                res.append("<td><a href='ECN/debug/" + indir + "'> " + indir + " </a></td>")
+                res.append("<td><a href='ecn/debug/" + filename + "'> " + indir + " </a></td>")
     else:
         return 1, "/sys/kernel/debug/mlx5 dose not exist"
     if res:
@@ -2080,6 +2110,18 @@ def add_command_if_exists(command):
         return
     if ( (pcie_flag == False) and (command in pcie_collection) ):
         return
+    if ( (ufm_flag == False) and (command in ufm_collection) ):
+        return
+    if ( (asap_flag == False) and (command in asap_collection) ):
+        return
+    if ( (asap_tc_flag == False) and (command in asap_tc_collection) ):
+        return
+    if ( (rdma_debug_flag == False) and (command in rdma_debug_collection) ):
+        return
+    if( (gpu_flag == False) and (command in gpu_command_collection) ):
+        return
+    if ( (fsdump_flag == False) and (command in fsdump_collection) ):
+        return
     if ( (no_ib_flag == True) and (command in ib_collection) ):
         return
     print_err_flag = 1
@@ -2091,13 +2133,16 @@ def add_command_if_exists(command):
         print_err_flag = 0
     elif (command == "ufm_logs"):
         ufm_snapshot_path = "/opt/ufm/scripts/vsysinfo"
-        if ufm_flag:
-            if(os.path.isfile(ufm_snapshot_path)):
-                status, result = get_status_output(ufm_snapshot_path + " -S all -e A -O " + path + file_name + "/ufm_logs")
-                if (status == 0):
-                    print_err_flag = 0
+        if(os.path.isfile(ufm_snapshot_path)):
+            status, result = get_status_output(ufm_snapshot_path + " -S all -e A -O " + path + file_name + "/ufm_logs")
+            if (status == 0):
+                print_err_flag = 0
         else:
-            return
+            status = 1
+            result = "--ufm flag provided but /opt/ufm/scripts/vsysinfo path not exist"
+            running_warnings.append(result)
+            print(result)
+            print_err_flag = 1
     elif (command == "se_linux_status"):
         status, result = se_linux_status_handler()
         if(status == 0):
@@ -2153,15 +2198,13 @@ def add_command_if_exists(command):
         status = 0
         print_err_flag = 0
     elif (command == "mlxdump"):
-        result = "fsdump flag was not provided!"
-        if (fsdump_flag == True):
-            result = mlxdump_handler()
-            if result == "Links":
-                result = add_mlxdump_links()
-                command_is_string = False
+        result = mlxdump_handler()
+        if result == "Links":
+            result = add_mlxdump_links()
+            command_is_string = False
         status = 0
         print_err_flag = 0
-    elif (command == "asap"):
+    elif (command == "asap_parameters"):
         status , result = asap_handler()
         if(status == 0):
             command_is_string = False
@@ -2170,7 +2213,7 @@ def add_command_if_exists(command):
             print_err_flag = 0
             if(result != 0 ):
                 print_err_flag = 1
-    elif (command == "asap_tc"):
+    elif (command == "asap_tc_information"):
         status, result = asap_tc_handler()
         if (status == 0) :
             command_is_string = False
@@ -2192,6 +2235,7 @@ def add_command_if_exists(command):
         result = devlink_handler()
         status = 0
         print_err_flag = 0
+        command_is_string = False
     elif (command == "show_pretty_gids"):
         result = show_pretty_gids_handler()
         status = 0
@@ -2204,6 +2248,7 @@ def add_command_if_exists(command):
         result = ethtool_all_interfaces_handler()
         status = 0
         print_err_flag = 0
+        command_is_string = False
     elif (command == "modinfo"):
         result = modinfo_handler()
         status = 0
@@ -2226,19 +2271,9 @@ def add_command_if_exists(command):
         else:
             status = 0
             print_err_flag = 0
-    elif (command == "mlxcables --DDM/--read_all_regs"):
-        st, result = mlxcables_options_handler()
-        if with_inband_flag and st == 0:
-            command_is_string = False
-        if st != 0:
-            status = 1
-            print_err_flag = 1
-        else:
-            status = 0
-            print_err_flag = 0
     elif (command == "lspci -vv"):
         result = lspci_vv_handler()
-        # add_output_to_pcie_debug_dict("lspci -vv", result)
+        add_output_to_pcie_folder("lspci_vv", result)
         status = 0
         print_err_flag = 0
     elif (command == "mlxmcg -d"):
@@ -2256,12 +2291,12 @@ def add_command_if_exists(command):
         print_err_flag = 0
     elif (command == "mlxconfig_query"):
         if is_MST_installed:
-            result = "mlxconfig output is the same as mstconfig, thus mlxconfig output is not generated"
+            result = "mlxconfig output is the same as mstconfig, thus mlxconfig output is not generated ,you can find the output under firmware directory "
         else:
             result = mstcommand_d_handler('mlxconfig')
         status = 0
         print_err_flag = 0
-    elif ("mst-func" in command):
+    elif ("mst_commands_query_output" in command):
         status, result = mst_func_handler()
         command_is_string = False
         status = 0
@@ -2284,21 +2319,21 @@ def add_command_if_exists(command):
             command_is_string = False
         else:
             print_err_flag = 1
-    elif (command == "/etc/NetworkManager/system-connections/"):
+    elif (command == "networkManager_system_connections"):
         status, result = network_manager_system_connections_handler()
         if(status == 0):
             print_err_flag = 0
             command_is_string = False
         else:
             print_err_flag = 1
-    elif "/sys/class/net/ecn" == command:
-        status, result = enc_configuration_handler()
+    elif "ecn_configuration" == command:
+        status, result = ecn_configuration_handler()
         if(status == 0):
             print_err_flag = 0
             command_is_string = False
         else:
             print_err_flag = 1
-    elif "/sys/kernel/debug/mlx5/cc_params/" == command:
+    elif "congestion_control_parameters" == command:
         status, result = congestion_control_parameters_handler()
         if(status == 0):
             print_err_flag = 0
@@ -2323,7 +2358,7 @@ def add_command_if_exists(command):
             status = 1
             print_err_flag = 1
             result = "Could not run: " + '"' + " awk '{ print FILENAME " + '"' + "=" + '"' + " $0  }' /sys/module/mlx*/parameters/* " + '"'
-    elif(command == "$USER"):
+    elif(command == "USER"):
         st, result = get_status_output("logname")
         if (st == 0):
             status = 0
@@ -2332,7 +2367,7 @@ def add_command_if_exists(command):
             status = 1
             print_err_flag = 1
             result = "could not run : logname"
-    elif (command == "yy_IB_modules_parameters"):
+    elif (command == "sysclass_IB_modules_parameters"):
         status, result = yy_ib_modules_parameters_handler()
         if(status == 0):
             status = 0
@@ -2340,7 +2375,7 @@ def add_command_if_exists(command):
         else:
             status = 1
             print_err_flag = 1
-    elif (command == "/sys/class/infiniband"):
+    elif (command == "sys_class_infiniband_ib_parameters"):
         status, result = sys_class_infiniband_handler()
         if (status == 0):
             status = 0
@@ -2348,7 +2383,7 @@ def add_command_if_exists(command):
         else:
             status = 1
             print_err_flag = 1
-    elif (command == "/sys/class/net"):
+    elif (command == "sys_class_net_ecn_ib"):
         status, result = sys_class_net_handler()
         if (status == 0):
             status = 0
@@ -2363,7 +2398,7 @@ def add_command_if_exists(command):
         else:
             status = 1
             print_err_flag = 1
-    elif (command == "zz_proc_net_bonding_files"):
+    elif (command == "proc_net_bonding_files"):
         status, result = zz_files_handler('/proc/net/bonding/')
         if (status == 0):
             status = 0
@@ -2371,7 +2406,7 @@ def add_command_if_exists(command):
         else:
             status = 1
             print_err_flag = 1
-    elif (command == "zz_sys_class_net_files"):
+    elif (command == "sys_class_net_files"):
         status, result = zz_files_handler('/sys/class/net/')
         if (status == 0):
             if (is_ib == 0):
@@ -2394,7 +2429,7 @@ def add_command_if_exists(command):
         team_interfaces = re.findall(r'.*?\:(.*)\: <.*',ip_link_output)
         if team_interfaces:
             for team in team_interfaces:
-                run_command = "";
+                run_command = ""
                 if (command == "teamdctl_state"):
                     run_command = "teamdctl " + team + " state"
                 elif (command == "teamdctl_state_view"):
@@ -2407,8 +2442,13 @@ def add_command_if_exists(command):
                     run_command = "teamdctl " + team + " config dump noports"
                 status, teamdctl_result = get_status_output(run_command)
                 if (status != 0):
+                    print_err_flag = 1
                     teamdctl_result = "Could not run: " + '"' + run_command + '"'
                 result += teamdctl_result + '\n\n'
+        else:
+            status = 1
+            print_err_flag = 1
+            result = "No team interfaces found"
     elif "mst status" in command:
         status, result = get_status_output(command)
         if status != 0:
@@ -2416,17 +2456,28 @@ def add_command_if_exists(command):
             result = "Could not run: " + '"' + command + '"'
         else:
             print_err_flag = 0
-    elif ( command == "snap_rpc.py controller_list" or command == "snap_rpc.py emulation_functions_list"):
-        st, result = get_status_output(command)
+    elif ( command == "snap_rpc.py controller_list" or command == "snap_rpc.py emulation_functions_list" or command == "virtnet query --all"):
+        status, result = get_status_output(command)
         print_err_flag = 0
-        status =0
+        if (status != 0):
+            print_err_flag = 1
     elif "lscpu" in command:
         # invoking regular command
         print_err_flag = 0
         # status, result = add_command_to_pcie_debug_dict(command)
         status, result = get_status_output(command)
         add_output_to_pcie_folder("lspcu", result)
-    elif "lspci -tv" in command:
+    elif "uname" in command:
+        status = 0
+        result = ""
+        if is_command_allowed("hostname") or generate_config_flag:
+            status, result = get_status_output("uname -a")
+        else:
+            status, result = get_status_output("uname -s -o -p -i -v -r -m")
+        print_err_flag = 0
+        if (status != 0):
+            print_err_flag = 1
+    elif  command == "lspci -tv":
         # invoking regular command
         print_err_flag = 0
         status, result = get_status_output(command)
@@ -2449,7 +2500,8 @@ def add_command_if_exists(command):
         server_commands_dict[command] = result
         if command_is_string:
             available_commands_collection[is_command_string].append(command)
-            add_txt_command_output(command, result)
+            if not "lspci" in command:
+                add_txt_command_output(command, result)
         else:
             available_commands_collection[not is_command_string].append(command)
     else:
@@ -2465,7 +2517,7 @@ def add_command_if_exists(command):
 
 def multicast_information_handler():
     if (st_saquery != 0):
-        return "saquery command is not found"
+        return "Failed to run saquery ,No SM/SA found on port"
 
     st, saquery_g = get_status_output("saquery -g 2>/dev/null")
     if (st != 0):
@@ -2536,7 +2588,7 @@ def calc_IP(MGID):
 
 def ib_mc_info_show_handler():
     if (st_saquery != 0):
-        return "saquery command is not found"
+        return "Failed to run saquery ,No SM/SA found on port"
 
     MAX_GROUPS=64
 
@@ -2998,12 +3050,20 @@ def add_internal_file_if_exists(file_full_path):
 # command_output - is the content of the out_file_name
 
 def add_ext_file_handler(field_name, out_file_name, command_output):
+    external_command = ["pcie_debug_dict","sysctl -a","ps -eLo","chkconfig","ucx_info -f","ucx_info -c","numa_node","netstat -anp","lstopo-no-graphics","lstopo-no-graphics -v -c","mlnx_tune -r","zoneinfo","other_system_files","interrupts"]
+    forbidden_chars = re.compile('([\/:*?"<||-])')
+    out_file_name = forbidden_chars.sub(r'', out_file_name).replace("\\", "") # clean the file name
+    out_file_name = out_file_name.replace(" ","_")
+    out_file_name = out_file_name.replace("'","")
     full_Path =  path + file_name + "/" + out_file_name
     file_path = out_file_name
     if "lspci" in field_name:
-        full_Path =  path + file_name + "/lspci_output/" + out_file_name
-        file_path = "lspci_output/" + out_file_name
-    if ( out_file_name != "pkglist" and (not "erformance" in out_file_name) and (not "sr-iov" in out_file_name) ):
+        full_Path =  path + file_name + "/pcie_files/" + out_file_name
+        file_path = "pcie_files/" + out_file_name
+    elif field_name in external_command:
+        full_Path =  path + file_name + "/commands_txt_output/" + out_file_name
+        file_path = "commands_txt_output/" + out_file_name
+    if ( out_file_name != "pkglist" and (not "erformance" in out_file_name) and (not "sr_iov" in out_file_name)):
         f = open(full_Path, 'a+')
         if sys.version_info[0] == 2:
             f.write(command_output)
@@ -3019,182 +3079,217 @@ def add_external_file_if_exists(field_name, curr_path):
     command_output = ""
     err_flag = 0
     err_command = "No '" + field_name + "' External File\nReason: Couldn't find command: "
-
     if (field_name.startswith("var/log")):
-        status, command_output = get_status_output("cat /" + curr_path)
-        if (status == 0):
-            field_name = field_name.replace('/','_')
-            filtered_field_name = filter_file_name(field_name)
-            add_ext_file_handler(field_name, filtered_field_name, command_output)
-        else:
-            err_flag = 1
-            err_command += field_name
-    elif (field_name == "kernel config"):
-        status, command_output = get_status_output("cat " + curr_path)
-        if (status == 0):
-            st , uname = get_status_output("uname -r")
-            if (st == 0):
-                add_ext_file_handler(field_name, "config-" + uname.strip(), command_output)
+        if is_command_allowed("file: " + curr_path):
+            status, command_output = get_status_output("cat /" + curr_path)
+            if (status == 0 and command_output):
+                field_name = field_name.replace('/','_')
+                filtered_field_name = filter_file_name(field_name)
+                add_ext_file_handler(field_name, filtered_field_name, command_output)
             else:
                 err_flag = 1
-                err_command += "uname -r"
+                err_command += field_name
+    elif (field_name == "kernel config"):
+        if is_command_allowed("file :" + curr_path):
+            status, command_output = get_status_output("cat " + curr_path)
+            if (status == 0):
+                st , uname = get_status_output("uname -r")
+                if (st == 0):
+                    add_ext_file_handler(field_name, "config-" + uname.strip(), command_output)
+                else:
+                    err_flag = 1
+                    err_command += "uname -r"
+            else:
+                err_flag = 1
+                err_command += "cat " + curr_path
+    elif (field_name == "mlxcables --DDM/--read_all_regs"):
+        if is_command_allowed("mlxcables --DDM/--read_all_regs"):
+            st, command_output = mlxcables_options_handler()
+            if st != 0:
+                err_flag = 1
+                err_command += "mlxcables --DDM/--read_all_regs"
+            else:
+                external_files_dict[field_name] = "<td><a href=" + curr_path + ">" + field_name + "</a></td>"
+                available_external_files_collection.append([field_name, curr_path])
+    elif (field_name == "config.gz"):
+        if is_command_allowed("file : /proc/config.gz"):
+           if(os.path.isfile('/proc/config.gz')):
+                status, command_output = get_status_output("cp /proc/config.gz " + path + file_name)
+                if (status != 0):
+                    err_flag = 1
+                    err_command += "cp /proc/config.gz" + path + file_name
+    elif (field_name == "libvma.conf" or field_name == "zoneinfo" or field_name == "interrupts"):
+        if is_command_allowed("file :" + curr_path):
+            status, command_output = get_status_output("cat " + curr_path)
+            if (status == 0):
+                add_ext_file_handler(field_name, field_name, command_output)
+            else:
+                err_flag = 1
+                err_command += "cat " + curr_path
+    elif (field_name == "ps -eLo"):
+        if is_command_allowed("ps -eLo"):
+            status, command_output = get_status_output("ps -eLo lstart,%cpu,psr,nlwp,f,uid,pid,ppid,pri,rtprio,ni,vsz,rss,stat,tty,time,wchan,args")
+            if (status == 0):
+                add_ext_file_handler(field_name, field_name, command_output)
+            else:
+                err_flag = 1
+                err_command += "ps -eLo lstart,%cpu,psr,nlwp,f,uid,pid,ppid,pri,rtprio,ni,vsz,rss,stat,tty,time,wchan,args"
+    elif (field_name == "chkconfig"):
+        command = ""
+        st,res = get_status_output('pidof systemd && echo "systemd" || echo "other"')
+        if "systemd" in res:
+            command = "systemctl list-unit-files"
+        else:
+            command = "chkconfig --list | sort"
+        status, command_output = get_status_output(command)
+        if (status == 0):
+                add_ext_file_handler(field_name, field_name, command_output)
         else:
             err_flag = 1
-            err_command += "cat " + curr_path
-    elif (field_name == "config.gz"):
-        if(os.path.isfile('/proc/config.gz')):
-            status, command_output = get_status_output("cp /proc/config.gz " + path + file_name)
+            err_command +=command
+    elif(field_name == "lspci -xxxvvv"):
+        if is_command_allowed("lspci -xxxvvv"):
+            cmd = "lspci | awk '{print $1}'"
+            st, output = get_status_output(cmd)
+            if (st == 0 and output == ""):
+                err_flag = 1
+                err_command += "lspci | awk '{print $1}'"
+            else:
+                interfaces = output.splitlines()
+                command_output = ""
+                for i in range(0, len(interfaces)):
+                    cmd = "lspci -s " + interfaces[i].strip() + " -xxxvvv"
+                    st2, output2 = get_status_output(cmd)
+                    if st2 == 0 and output2 != "":
+                        command_output += cmd + "\n"
+                        command_output += output2
+                        if i != len(interfaces)-1:
+                            command_output += "\n----------------------------------------\n\n"
+                add_output_to_pcie_folder("full_lspci", command_output)
+                add_ext_file_handler(field_name, field_name, command_output)
+    elif (field_name == "ibnetdiscover"):
+        if is_command_allowed("ibnetdiscover","no_ib"):
+            if (is_ib == 0 and no_ib_flag == False):
+                ibnetdiscover_command = ib_res + " --virt "
+                status, command_output = get_status_output(ibnetdiscover_command)
+                if (status == 0):
+                    add_ext_file_handler("ibnetdiscover", "ibnetdiscover", command_output)
+                    for card in active_subnets:
+                        for port in active_subnets[card]:
+                            status, command_output = get_status_output(ibnetdiscover_command + " -p -C " + card +" -P " + port["port_num"])
+                            suffix =  card + "_" + port["port_num"]
+                            if (status == 0):
+                                add_ext_file_handler("ibnetdiscover --virt -p " + suffix, "ibnetdiscover_p_" + suffix, command_output)
+                            else:
+                                err_flag = 1
+                                err_command = "No 'ibnetdiscover_p' External File\nReason: Couldn't find command: ibnetdiscover -p" + suffix
+                else:
+                    err_flag = 1
+                    err_command += ib_res
+                    err_command += "\n\nNo 'ibnetdiscover_p' External File\nReason: Couldn't find command: " + ibnetdiscover_command
+            else:
+                err_flag = 1
+                if (is_ib != 0 and no_ib_flag == True):
+                    reason = "which ibnetdiscover, and because --no_ib flag was provided"
+                    err_command += reason + "\n\nNo 'ibnetdiscover_p' External File\nReason: Couldn't find command: " + reason
+                if (is_ib == 0 and no_ib_flag == True):
+                    err_command = "No '" + field_name + "' External File\nReason: --no_ib flag was provided\n\nNo 'ibnetdiscover_p' External File\nReason: --no_ib flag was provided"
+                if (is_ib != 0 and no_ib_flag == False):
+                    err_command += "which ibnetdiscover"
+                    err_command += "\n\nNo 'ibnetdiscover_p' External File\nReason: Couldn't find command: which ibnetdiscover"
+    elif (field_name == "Installed packages"):
+        if is_command_allowed("Installed_packages"):
+            if (cur_os != "debian"):
+                status, unrelevant_res = get_status_output("rpm -qa --last > " + path + file_name + "/pkglist")
+            else:
+                status, unrelevant_res = get_status_output("dpkg --list > " + path + file_name + "/pkglist")
+            if (status == 0):
+                add_ext_file_handler(field_name, "pkglist", "")
+            else:
+                err_flag = 1
+                err_command += "No file " + path + file_name+"/pkglist"
+    elif (field_name == "Performance tuning analyze"):
+        if is_command_allowed("file: performance_tuning_analyze.html"):
+            status, command_output = get_status_output("cat " + html2_path)
+            if (status == 0):
+                add_ext_file_handler(field_name, "performance_tuning_analyze.html", command_output)
+            else:
+                err_flag = 1
+                err_command += html2_path
+    elif (field_name == "SR_IOV"):
+        if is_command_allowed("file: sr_iov.html"):
+            status, command_output = get_status_output("cat " + html3_path)
+            if status == 0 :
+                add_ext_file_handler(field_name, "sr_iov.html", command_output)
+            else:
+                err_flag = 1
+                err_command += html3_path + "\nSince SR_IOV is not activated"
+    elif(field_name == "other_system_files"):
+        if is_command_allowed("get_ib_sys_files_exclude_uevent_files","no_ib"):
+            error_files = ""
+            if (no_ib_flag == False):
+                st, res = get_status_output("find /sys | grep infini |grep -v uevent |sort")
+                if (st == 0 and res != ""):
+                    lines = res.splitlines()
+                    command_output = ""
+                    for line in lines:
+                        if(os.path.isfile(line)):
+                            try:
+                                f = open(line, 'r')
+                                command_output += "File: " + line + ": " + f.read()
+                                f.close()
+                            except: error_files += "File: " + line + "\n"
+                    command_output += "\n -------------------------------------------------------- \n"
+                    command_output += "Cannot open the following files: \n"
+                    command_output += error_files
+                    add_ext_file_handler(field_name, field_name, command_output)
+                else:
+                    err_flag = 1
+                    err_command += "find /sys | grep infini |grep -v uevent |sort"
+    elif(field_name == "numa_node"):
+        if is_command_allowed("get_numa_node_sys_files_exclude_uevent_files"):
+            if cur_os == "debian":
+                os.system("exec 2>/dev/null")
+            st, numas = get_status_output("find /sys | grep numa_node | grep -v uevent |sort")
+            if st == 0:
+                command_output = ""
+                for numa in numas.splitlines():
+                    with open(numa, 'r') as numa_file:
+                        command_output += numa + " " + numa_file.read().strip() + "\n"
+                add_ext_file_handler(field_name, field_name, command_output)
+            else:
+                err_flag = 1
+                err_command += "find /sys | grep numa_node | grep -v uevent |sort"
+    elif ("mlnx_tune" in field_name):
+        if is_command_allowed("mlnx_tune","no_ib"):
+            status, command_output = get_status_output("./mlnx_tune -r", "1m")
+            if not (("No such file or directory" in command_output) or ((status != 0) and not ("Unsupported" in command_output))):
+                add_ext_file_handler(field_name, curr_path, command_output)
+            else:
+                status, command_output = get_status_output(field_name, "1m")
+                if not (status == 0 or ("Unsupported" in command_output)):
+                    err_flag = 1
+                    err_command += field_name + " - tool is not installed, and there is no script mlnx_tune"
+                    err_command += "\nmlnx_tune tool is available on Mellanox OFED 3.0.0 and above"
+                else:
+                    add_ext_file_handler(field_name, curr_path, command_output)
+    elif ("dmidecode" in field_name):
+        if is_command_allowed("dmidecode"):
+            status = get_dmidecode_info()
             if (status != 0):
                 err_flag = 1
-                err_command += "cp /proc/config.gz" + path + file_name
-    elif (field_name == "libvma.conf" or field_name == "zoneinfo" or field_name == "interrupts"):
-        status, command_output = get_status_output("cat " + curr_path)
-        if (status == 0):
-            add_ext_file_handler(field_name, field_name, command_output)
-        else:
-            err_flag = 1
-            err_command += "cat " + curr_path
-    elif (field_name == "ps -eLo"):
-        status, command_output = get_status_output("ps -eLo lstart,%cpu,psr,nlwp,f,uid,pid,ppid,pri,rtprio,ni,vsz,rss,stat,tty,time,wchan,args")
-        if (status == 0):
-            add_ext_file_handler(field_name, field_name, command_output)
-        else:
-            err_flag = 1
-            err_command += "ps -eLo lstart,%cpu,psr,nlwp,f,uid,pid,ppid,pri,rtprio,ni,vsz,rss,stat,tty,time,wchan,args"
-    elif(field_name == "lspci -xxxvvv"):
-        cmd = "lspci | awk '{print $1}'"
-        st, output = get_status_output(cmd)
-        if (st == 0 and output == ""):
-            err_flag = 1
-            err_command += "lspci | awk '{print $1}'"
-        else:
-            interfaces = output.splitlines()
-            command_output = ""
-            for i in range(0, len(interfaces)):
-                cmd = "lspci -s " + interfaces[i].strip() + " -xxxvvv"
-                st2, output2 = get_status_output(cmd)
-                if st2 == 0 and output2 != "":
-                    command_output += cmd + "\n"
-                    command_output += output2
-                    if i != len(interfaces)-1:
-                        command_output += "\n----------------------------------------\n\n"
-            add_output_to_pcie_folder("full_lspci", command_output)
-            add_ext_file_handler(field_name, field_name, command_output)
-    elif (field_name == "ibnetdiscover"):
-        if (is_ib == 0 and no_ib_flag == False):
-            ibnetdiscover_command = ib_res + " --virt "
-            status, command_output = get_status_output(ibnetdiscover_command)
-            if (status == 0):
-                add_ext_file_handler("ibnetdiscover", "ibnetdiscover", command_output)
-                for card in active_subnets:
-                    for port in active_subnets[card]:
-                        status, command_output = get_status_output(ibnetdiscover_command + " -p -C " + card +" -P " + port["port_num"])
-                        suffix =  card + "_" + port["port_num"]
-                        if (status == 0):
-                            add_ext_file_handler("ibnetdiscover --virt -p " + suffix, "ibnetdiscover_p_" + suffix, command_output)
-                        else:
-                            err_flag = 1
-                            err_command = "No 'ibnetdiscover_p' External File\nReason: Couldn't find command: ibnetdiscover -p" + suffix
-            else:
-                err_flag = 1
-                err_command += ib_res
-                err_command += "\n\nNo 'ibnetdiscover_p' External File\nReason: Couldn't find command: " + ibnetdiscover_command
-        else:
-            err_flag = 1
-            if (is_ib != 0 and no_ib_flag == True):
-                reason = "which ibnetdiscover, and because --no_ib flag was provided"
-                err_command += reason + "\n\nNo 'ibnetdiscover_p' External File\nReason: Couldn't find command: " + reason
-            if (is_ib == 0 and no_ib_flag == True):
-                err_command = "No '" + field_name + "' External File\nReason: --no_ib flag was provided\n\nNo 'ibnetdiscover_p' External File\nReason: --no_ib flag was provided"
-            if (is_ib != 0 and no_ib_flag == False):
-                err_command += "which ibnetdiscover"
-                err_command += "\n\nNo 'ibnetdiscover_p' External File\nReason: Couldn't find command: which ibnetdiscover"
-    elif (field_name == "Installed packages"):
-        if (cur_os != "debian"):
-            status, unrelevant_res = get_status_output("rpm -qva --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIZE}\n' | sort  > " + path + file_name + "/pkglist")
-        else:
-            status, unrelevant_res = get_status_output("dpkg --list > " + path + file_name + "/pkglist")
-        if (status == 0):
-            add_ext_file_handler(field_name, "pkglist", "")
-        else:
-            err_flag = 1
-            err_command += "No file " + path + file_name+"/pkglist"
-    elif (field_name == "Performance tuning analyze"):
-        status, command_output = get_status_output("cat " + html2_path)
-        if (status == 0):
-            add_ext_file_handler(field_name, "performance-tuning-analyze.html", command_output)
-        else:
-            err_flag = 1
-            err_command += html2_path
-    elif (field_name == "SR-IOV"):
-        status, command_output = get_status_output("cat " + html3_path)
-        if status == 0 :
-            add_ext_file_handler(field_name, "sr-iov.html", command_output)
-        else:
-            err_flag = 1
-            err_command += html3_path + "\nSince SR-IOV is not activated"
-    elif(field_name == "other_system_files"):
-        error_files = ""
-        if (no_ib_flag == False):
-            st, res = get_status_output("find /sys | grep infini |grep -v uevent |sort")
-            if (st == 0 and res != ""):
-                lines = res.splitlines()
-                command_output = ""
-                for line in lines:
-                    if(os.path.isfile(line)):
-                        try:
-                            f = open(line, 'r')
-                            command_output += "File: " + line + ": " + f.read()
-                            f.close()
-                        except: error_files += "File: " + line + "\n"
-                command_output += "\n -------------------------------------------------------- \n"
-                command_output += "Cannot open the following files: \n"
-                command_output += error_files
-                add_ext_file_handler(field_name, field_name, command_output)
-            else:
-                err_flag = 1
-                err_command += "find /sys | grep infini |grep -v uevent |sort"
-    elif(field_name == "numa_node"):
-        if cur_os == "debian":
-            os.system("exec 2>/dev/null")
-        st, numas = get_status_output("find /sys | grep numa_node | grep -v uevent |sort")
-        if st == 0:
-            command_output = ""
-            for numa in numas.splitlines():
-                with open(numa, 'r') as numa_file:
-                    command_output += numa + " " + numa_file.read().strip() + "\n"
-            add_ext_file_handler(field_name, field_name, command_output)
-        else:
-            err_flag = 1
-            err_command += "find /sys | grep numa_node | grep -v uevent |sort"
-    elif ("mlnx_tune" in field_name):
-        status, command_output = get_status_output("./mlnx_tune -r", "1m")
-        if not (("No such file or directory" in command_output) or ((status != 0) and not ("Unsupported" in command_output))):
-            add_ext_file_handler(field_name, curr_path, command_output)
-        else:
-            status, command_output = get_status_output(field_name, "1m")
-            if not (status == 0 or ("Unsupported" in command_output)):
-                err_flag = 1
-                err_command += field_name + " - tool is not installed, and there is no script mlnx_tune"
-                err_command += "\nmlnx_tune tool is available on Mellanox OFED 3.0.0 and above"
-            else:
-                add_ext_file_handler(field_name, curr_path, command_output)
-    elif ("dmidecode" in field_name):
-        status = get_dmidecode_info()
-        if (status != 0):
-            err_flag = 1
-            err_command += field_name
+                err_command += field_name
     else:
-        status, command_output = get_status_output(field_name, "10s")
-        if (status == 0):
-            if "dmesg" in field_name:
-                add_ext_file_handler(field_name, curr_path, command_output)
+        if is_command_allowed(field_name):
+            status, command_output = get_status_output(field_name, "10s")
+            if (status == 0):
+                if "dmesg" in field_name:
+                    add_ext_file_handler(field_name, curr_path, command_output)
+                else:
+                    add_ext_file_handler(field_name, field_name, command_output)
             else:
-                add_ext_file_handler(field_name, field_name, command_output)
-        else:
-            err_flag = 1
-            err_command += field_name
-
+                err_flag = 1
+                err_command += field_name
     if (err_flag == 1):
         f = open(path + file_name + "/err_messages/dummy_external_paths", 'a')
         f.write(err_command)
@@ -3221,13 +3316,36 @@ def arrange_pcie_debugging_output():
 
 def arrange_server_commands_section():
     update_net_devices()
-    if (cur_os != "debian"):
-        commands_collection.extend(["chkconfig --list | sort"])
     if verbose_flag:
         print("\tGenerating server commands section has started")
     # add server commands list
     for cmd in commands_collection:
-        if is_command_allowed(cmd):
+        related_flag = ""
+        if cmd in pcie_collection:
+            related_flag = "pcie"
+        if cmd in fw_collection:
+            if related_flag:
+                related_flag+="/"
+            related_flag += "no_fw"
+        if cmd in ufm_collection:
+            related_flag += "ufm"
+        if cmd in fsdump_collection:
+            if related_flag:
+                related_flag+="/"
+            related_flag += "fsdump"
+        if cmd in asap_collection:
+            related_flag += "asap"
+        if cmd in asap_tc_collection:
+            related_flag += "asap_tc"
+        if cmd in rdma_debug_collection:
+            related_flag += "rdma_debug"
+        if cmd in gpu_command_collection:
+            related_flag += "gpu"
+        if cmd in ib_collection:
+            if related_flag:
+                related_flag+="/"
+            related_flag += "no_ib"
+        if is_command_allowed(cmd,related_flag):
             if verbose_count == 2:
                 print("\t\t" + cmd + " - start")
             add_command_if_exists(cmd)
@@ -3241,10 +3359,9 @@ def arrange_fabric_commands_section():
 
     if verbose_flag:
         print("\tGenerating fabric diagnostic information section has started")
-    update_saquery()
     # add fabric commands list if configured as IB
     for cmd in fabric_commands_collection:
-        if is_command_allowed(cmd):
+        if is_command_allowed(cmd,"no_ib"):
             if verbose_count == 2:
                 print("\t\t" + cmd + " - start")
             add_fabric_command_if_exists(cmd)
@@ -3255,7 +3372,10 @@ def arrange_fabric_commands_section():
 
     # add fabric multi-subnets commands list if configured as IB
     for cmd in fabric_multi_sub_commands_collection:
-        if is_command_allowed(cmd):
+        related_flag = "no_ib"
+        if cmd == "ibdiagnet":
+            related_flag = "no_ib/ibdiagnet"
+        if is_command_allowed(cmd,related_flag):
             if verbose_count == 2:
                 print("\t\t" + cmd + " - start")
             add_fabric_multi_sub_command_if_exists(cmd)
@@ -3279,68 +3399,84 @@ def arrange_internal_files_section():
                 print("\t\t" + static_path + " - end")
 
     # Internal files with dynamic paths handlers
-    if (os.path.exists("/etc/modprobe.d/") == True):
-        for file in os.listdir("/etc/modprobe.d/"):
-            if (os.path.isfile("/etc/modprobe.d/"+file) == True):
-                if is_command_allowed("file: /etc/modprobe.d/" + file):
+
+    if is_command_allowed("file: /etc/modprobe.d/"):
+        if (os.path.exists("/etc/modprobe.d/") == True):
+            for file in os.listdir("/etc/modprobe.d/"):
+                if (os.path.isfile("/etc/modprobe.d/"+file) == True):
                     if verbose_count == 2:
                         print("\t\t/etc/modprobe.d/" + file + " - start")
                     add_internal_file_if_exists("/etc/modprobe.d/" + file)
                     if verbose_count == 2:
                         print("\t\t/etc/modprobe.d/" + file + " - end")
-    if (os.path.exists("/proc/net/vlan/") == True):
-        for file in os.listdir("/proc/net/vlan/"):
-            if (os.path.isfile("/proc/net/vlan/"+file) == True):
-                if is_command_allowed("file: /proc/net/vlan/" +file):
+    if is_command_allowed("file: /etc/netplan/"):
+        if (os.path.exists("/etc/netplan/") == True):
+            for file in os.listdir("/etc/netplan/"):
+                if (os.path.isfile("/etc/netplan/"+file) == True):
+                    if verbose_count == 2:
+                        print("\t\t/etc/netplan/" + file + " - start")
+                    add_internal_file_if_exists("/etc/netplan/" + file)
+                    if verbose_count == 2:
+                        print("\t\t/etc/netplan/" + file + " - end")
+    if is_command_allowed("file: /etc/network/") and (cur_os == "debian"):
+        if (os.path.exists("/etc/network/") == True):
+            for subdir, dirs, files in os.walk("/etc/network/"):
+                for file in files:
+                    if (os.path.isfile(os.path.join(subdir, file)) == True):
+                        if verbose_count == 2:
+                            print("\t\t" + os.path.join(subdir, file)+ " - start")
+                        add_internal_file_if_exists(os.path.join(subdir, file))
+                        if verbose_count == 2:
+                            print("\t\t" + os.path.join(subdir, file) + " - end")
+    if is_command_allowed("file: /proc/net/vlan/" ):
+        if (os.path.exists("/proc/net/vlan/") == True):
+            for file in os.listdir("/proc/net/vlan/"):
+                if (os.path.isfile("/proc/net/vlan/"+file) == True):
                     if verbose_count == 2:
                         print("\t\t/proc/net/vlan/" + file + " - start")
                     add_internal_file_if_exists("/proc/net/vlan/" + file)
                     if verbose_count == 2:
                         print("\t\t/proc/net/vlan/" + file + " - end")
-    if (os.path.exists("/sys/devices/system/node/") == True):
-        for file in os.listdir("/sys/devices/system/node/"):
-            if (os.path.isfile("/sys/devices/system/node/"+file) == False):
-                if is_command_allowed("file: /sys/devices/system/node/" + file + "/cpulist"):
+    if is_command_allowed("file: /sys/devices/system/node/" ):
+        if (os.path.exists("/sys/devices/system/node/") == True):
+            for file in os.listdir("/sys/devices/system/node/"):
+                if (os.path.isfile("/sys/devices/system/node/"+file) == False):
                     if verbose_count == 2:
                         print("\t\t/sys/devices/system/node/" + file + "/cpulist - start")
                     add_internal_file_if_exists("/sys/devices/system/node/"+file+"/cpulist")
                     if verbose_count == 2:
                         print("\t\t/sys/devices/system/node/" + file + "/cpulist - end")
-
-    if (cur_os != "debian" and os.path.exists("/etc/sysconfig/network-scripts/") == True):
-        for file in os.listdir("/etc/sysconfig/network-scripts/"):
-            if ( (os.path.isfile("/etc/sysconfig/network-scripts/"+file) == True) and (file.startswith("ifcfg")) ):
-                if is_command_allowed("file: /etc/sysconfig/network-scripts/" + file):
+    if is_command_allowed("file: /etc/sysconfig/network-scripts/ifcfg*" ):
+        if (cur_os != "debian" and os.path.exists("/etc/sysconfig/network-scripts/") == True):
+            for file in os.listdir("/etc/sysconfig/network-scripts/"):
+                if ( (os.path.isfile("/etc/sysconfig/network-scripts/"+file) == True) and (file.startswith("ifcfg")) ):
                     if verbose_count == 2:
                         print("\t\t/etc/sysconfig/network-scripts/" + file + " - start")
                     add_internal_file_if_exists("/etc/sysconfig/network-scripts/" + file)
                     if verbose_count == 2:
                         print("\t\t/etc/sysconfig/network-scripts/" + file + " - end")
-
-    if (os.path.exists("/etc/sysconfig/network/") == True):
-        for file in os.listdir("/etc/sysconfig/network/"):
-            if ( (os.path.isfile("/etc/sysconfig/network/"+file) == True) and (file.startswith("ifcfg-")) ):
-                if is_command_allowed("file: /etc/sysconfig/network/" + file):
+    if is_command_allowed("file: /etc/sysconfig/network/ifcfg*"):
+        if (os.path.exists("/etc/sysconfig/network/") == True):
+            for file in os.listdir("/etc/sysconfig/network/"):
+                if ( (os.path.isfile("/etc/sysconfig/network/"+file) == True) and (file.startswith("ifcfg-")) ):
                     if verbose_count == 2:
                         print("\t\t/etc/sysconfig/network/" + file + " - start")
                     add_internal_file_if_exists("/etc/sysconfig/network/" + file)
                     if verbose_count == 2:
                         print("\t\t/etc/sysconfig/network/" + file + " - end")
-
-    if (os.path.exists("/etc/") == True):
-        for file in os.listdir("/etc/"):
-            if ( (os.path.isfile("/etc/"+file) == True) and ("release" in file) ):
-                if is_command_allowed("file: /etc/"+file):
+    if is_command_allowed("file: /etc/*release*"):
+        if (os.path.exists("/etc/") == True):
+            for file in os.listdir("/etc/"):
+                if ( (os.path.isfile("/etc/"+file) == True) and ("release" in file) ):
                     if verbose_count == 2:
                         print("\t\t/etc/" + file + " - start")
                     add_internal_file_if_exists("/etc/"+file)
                     if verbose_count == 2:
                         print("\t\t/etc/" + file + " - end")
-
-    if (os.path.exists("/etc/infiniband/") == True):
-        for file in os.listdir("/etc/infiniband/"):
-            if (os.path.isfile("/etc/infiniband/"+file) == True) and (file != "vf-net-link-name.sh"):
-                if is_command_allowed("file: /etc/infiniband/"+file):
+    if is_command_allowed("file: /etc/infiniband/"):
+        if (os.path.exists("/etc/infiniband/") == True):
+            for file in os.listdir("/etc/infiniband/"):
+                if (os.path.isfile("/etc/infiniband/"+file) == True) and (file != "vf-net-link-name.sh"):
                     if verbose_count == 2:
                         print("\t\t/etc/infiniband/" + file + " - start")
                     add_internal_file_if_exists("/etc/infiniband/"+file)
@@ -3352,7 +3488,8 @@ def arrange_internal_files_section():
         print("\t----------------------------------------------------")
 
 def arrange_external_files_section():
-
+    if (cur_os != "debian"):
+        external_files_collection.extend([["chkconfig",""]])
     if verbose_flag:
         print("\tGenerating external files section has started")
     st, var_log_files = get_status_output("ls /var/log/")
@@ -3363,22 +3500,24 @@ def arrange_external_files_section():
                 add_external_file_if_exists('var/log/'+ file,'var/log/'+ file)
     # add external files if exist to the provided external section e.g. "kernel config"
     for pair in external_files_collection:
+        if (pair[0] in pcie_collection) :
+            is_command_allowed(pair[0],"pcie")
+            if (pcie_flag == False):
+                continue
         if "biosdecode" in pair[0] and blueos_flag:
             continue
-        if is_command_allowed("file: " + pair[0]):
+        if verbose_count == 2:
+            print("\t\t" + pair[0] + " - start")
+        add_external_file_if_exists(pair[0], pair[1])
+        if verbose_count == 2:
+            print("\t\t" + pair[0] + " - end")
+    if (no_ib_flag == False):
+        for pair in perf_external_files_collection:
             if verbose_count == 2:
                 print("\t\t" + pair[0] + " - start")
             add_external_file_if_exists(pair[0], pair[1])
             if verbose_count == 2:
                 print("\t\t" + pair[0] + " - end")
-    if (no_ib_flag == False):
-        for pair in perf_external_files_collection:
-            if is_command_allowed("file: " + pair[0]):
-                if verbose_count == 2:
-                    print("\t\t" + pair[0] + " - start")
-                add_external_file_if_exists(pair[0], pair[1])
-                if verbose_count == 2:
-                    print("\t\t" + pair[0] + " - end")
     # Copying files or dirs to the tgz without appearing in the HTML
     for pair in copy_under_files:
         if not os.path.isdir(pair[1]):
@@ -3393,31 +3532,33 @@ def arrange_external_files_section():
             if verbose_count == 2:
                 print("\t\t" + pair[1] + " - end")
     for pair in copy_openstack_dirs:
-        if not os.path.isdir(pair[1]):
-            continue
-        if (openstack_flag == True):
-            if verbose_count == 2:
-                print("\t\t" + pair[1] + " - start")
-            try:
-                shutil.copytree(pair[1], path + file_name + "/" + pair[0])
-            except:
-                pass
-            if verbose_count == 2:
-                print("\t\t" + pair[1] + " - end")
-    for pair in copy_openstack_files:
-        if (openstack_flag == True):
-            if verbose_count == 2:
-                print("\t\t" + pair[1] + " - start")
-            try:
-                if (os.path.exists(path + file_name + "/" + pair[0] + "/") == False):
-                    os.mkdir(path + file_name + "/" + pair[0] + "/")
+        if (is_command_allowed("file: " + pair[1] , " openstack")):
+            if not os.path.isdir(pair[1]):
+                continue
+            if (openstack_flag == True):
                 if verbose_count == 2:
-                    print("\t\t" + "from: " + pair[1] + " to: " +  path + file_name + "/" + pair[0] + "/")
-                shutil.copy(pair[1], path + file_name + "/" + pair[0] + "/")
-            except:
-                pass
-            if verbose_count == 2:
-                print("\t\t" + pair[1] + " - end")
+                    print("\t\t" + pair[1] + " - start")
+                try:
+                    shutil.copytree(pair[1], path + file_name + "/" + pair[0])
+                except:
+                    pass
+                if verbose_count == 2:
+                    print("\t\t" + pair[1] + " - end")
+    for pair in copy_openstack_files:
+        if (is_command_allowed("file: " + pair[1] , "openstack")):
+            if (openstack_flag == True):
+                if verbose_count == 2:
+                    print("\t\t" + pair[1] + " - start")
+                try:
+                    if (os.path.exists(path + file_name + "/" + pair[0] + "/") == False):
+                        os.mkdir(path + file_name + "/" + pair[0] + "/")
+                    if verbose_count == 2:
+                        print("\t\t" + "from: " + pair[1] + " to: " +  path + file_name + "/" + pair[0] + "/")
+                    shutil.copy(pair[1], path + file_name + "/" + pair[0] + "/")
+                except:
+                    pass
+                if verbose_count == 2:
+                    print("\t\t" + pair[1] + " - end")
     if verbose_flag:
         print("\tGenerating external files section has ended")
         print("\t----------------------------------------------------")
@@ -3426,9 +3567,12 @@ def arrange_dicts():
     arrange_server_commands_section()
     arrange_internal_files_section()
     arrange_external_files_section()
-
-    if (is_ib == 0 and no_ib_flag == False):
+    update_saquery()
+    if (st_saquery == 0 and no_ib_flag == False):
         arrange_fabric_commands_section()
+    else:
+        sub_chain_commands.extend(fabric_commands_collection)
+        sub_chain_commands.extend(fabric_multi_sub_commands_collection)
     arrange_pcie_debugging_output()
 #==========================================================
 #        SR-IOV Arranging Dictionaries
@@ -3519,7 +3663,7 @@ def add_sriov_internal_file_if_exists(file_full_path):
 
 def arrange_sriov_commands_section():
     if verbose_flag:
-        print("\t\tGenerating sr-iov commands section has started")
+        print("\t\tGenerating sr_iov commands section has started")
     # add server commands list
     for cmd in sriov_commands_collection:
         if is_command_allowed(cmd):
@@ -3529,7 +3673,7 @@ def arrange_sriov_commands_section():
             if verbose_count == 2:
                 print("\t\t\t" + cmd + " - end")
     if verbose_flag:
-        print("\t\tGenerating sr-iov commands section has ended")
+        print("\t\tGenerating sr_iov commands section has ended")
 
 #----------------------------------------------------------
 #    SR-IOV Internal Files Dictionary Handler
@@ -3537,7 +3681,7 @@ def arrange_sriov_commands_section():
 def arrange_sriov_internal_files_section():
     if verbose_flag:
         print("\t\t--------------------------------------------")
-        print("\t\tGenerating sr-iov internal files section has started")
+        print("\t\tGenerating sr_iov internal files section has started")
     # Internal files with static paths handlers
     for static_path in sriov_internal_files_collection:
         if is_command_allowed("file: " + static_path):
@@ -3550,112 +3694,102 @@ def arrange_sriov_internal_files_section():
     # Internal files with dynamic paths handlers
     if os.path.exists("/sys/class/infiniband/"):
         for indir in os.listdir("/sys/class/infiniband/"):
-            if os.path.exists("/sys/class/infiniband/"+ indir + "/device/"):
-                for infile in os.listdir("/sys/class/infiniband/"+ indir + "/device/"):
-                    if (infile.startswith("sriov") or infile.startswith("mlx")) and os.path.isfile("/sys/class/infiniband/"+ indir + "/device/" + infile):
-                        if is_command_allowed("file: /sys/class/infiniband/"+ indir + "/device/" + infile):
+            if is_command_allowed("file: /sys/class/infiniband/*/device/") :
+                if os.path.exists("/sys/class/infiniband/"+ indir + "/device/"):
+                    for infile in os.listdir("/sys/class/infiniband/"+ indir + "/device/"):
+                        if (infile.startswith("sriov") or infile.startswith("mlx")) and os.path.isfile("/sys/class/infiniband/"+ indir + "/device/" + infile):
                             if verbose_count == 2:
                                 print("\t\t\t/sys/class/infiniband/"+ indir + "/device/" + infile + " - start")
                             add_sriov_internal_file_if_exists("/sys/class/infiniband/"+ indir + "/device/" + infile)
                             if verbose_count == 2:
                                 print("\t\t\t/sys/class/infiniband/"+ indir + "/device/" + infile + " - end")
             if os.path.exists("/sys/class/infiniband/" + indir + "/iov/"):
-                if os.path.exists("/sys/class/infiniband/" + indir + "/iov/ports/"):
-                    for indir2 in os.listdir("/sys/class/infiniband/" + indir + "/iov/ports/"):
-                        if represents_int(indir2) and int(indir2) >= 0 and int(indir2) <= 127:
-                            if os.path.isfile("/sys/class/infiniband/" + indir + "/iov/ports/" + indir2 + "/gids/" + indir2):
-                                if is_command_allowed("file: /sys/class/infiniband/" + indir + "/iov/ports/" + indir2 + "/gids/" + indir2):
+                if is_command_allowed("file: /sys/class/infiniband/*/iov" ):
+                    if os.path.exists("/sys/class/infiniband/" + indir + "/iov/ports/"):
+                        for indir2 in os.listdir("/sys/class/infiniband/" + indir + "/iov/ports/"):
+                            if represents_int(indir2) and int(indir2) >= 0 and int(indir2) <= 127:
+                                if os.path.isfile("/sys/class/infiniband/" + indir + "/iov/ports/" + indir2 + "/gids/" + indir2):
                                     if verbose_count == 2:
                                         print("\t\t\t/sys/class/infiniband/" + indir + "/iov/ports/" + indir2 + "/gids/" + indir2 + " - start")
                                     add_sriov_internal_file_if_exists("/sys/class/infiniband/" + indir + "/iov/ports/" + indir2 + "/gids/" + indir2)
                                     if verbose_count == 2:
                                         print("\t\t\t/sys/class/infiniband/" + indir + "/iov/ports/" + indir2 + "/gids/" + indir2 + " - end")
-                            if os.path.isfile("/sys/class/infiniband/" + indir + "/iov/ports/" + indir2 + "/admin_guids/" + indir2):
-                                if is_command_allowed("file: /sys/class/infiniband/" + indir + "/iov/ports/" + indir2 + "/admin_guids/" + indir2):
+                                if os.path.isfile("/sys/class/infiniband/" + indir + "/iov/ports/" + indir2 + "/admin_guids/" + indir2):
                                     if verbose_count == 2:
                                         print("\t\t\t/sys/class/infiniband/" + indir + "/iov/ports/" + indir2 + "/admin_guids/" + indir2 + " - start")
                                     add_sriov_internal_file_if_exists("/sys/class/infiniband/" + indir + "/iov/ports/" + indir2 + "/admin_guids/" + indir2)
                                     if verbose_count == 2:
                                         print("\t\t\t/sys/class/infiniband/" + indir + "/iov/ports/" + indir2 + "/admin_guids/" + indir2 + " - end")
-                            if int(indir2) <= 126:
-                                if os.path.isfile("/sys/class/infiniband/" + indir + "/iov/ports/"  + indir2 + "/pkeys/" + indir2):
-                                    if is_command_allowed("file: /sys/class/infiniband/" + indir + "/iov/ports/"  + indir2 + "/pkeys/" + indir2):
+                                if int(indir2) <= 126:
+                                     if os.path.isfile("/sys/class/infiniband/" + indir + "/iov/ports/"  + indir2 + "/pkeys/" + indir2):
                                         if verbose_count == 2:
                                             print("\t\t\t/sys/class/infiniband/" + indir + "/iov/ports/"  + indir2 + "/pkeys/" + indir2 + " - start")
                                         add_sriov_internal_file_if_exists("/sys/class/infiniband/" + indir + "/iov/ports/"  + indir2 + "/pkeys/" + indir2)
                                         if verbose_count == 2:
                                             print("\t\t\t/sys/class/infiniband/" + indir + "/iov/ports/"  + indir2 + "/pkeys/" + indir2 + " - end")
-                for indir2 in os.listdir("/sys/class/infiniband/" + indir + "/iov/"):
-                    if indir2.startswith("0000"):
-                        for m in range(1,3):
-                            if os.path.isfile("/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/gid_idx/0"):
-                                if is_command_allowed("file: /sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/gid_idx/0"):
+                    for indir2 in os.listdir("/sys/class/infiniband/" + indir + "/iov/"):
+                        if indir2.startswith("0000"):
+                            for m in range(1,3):
+                                if os.path.isfile("/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/gid_idx/0"):
                                     if verbose_count == 2:
                                         print("\t\t\t/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/gid_idx/0 - start")
                                     add_sriov_internal_file_if_exists("/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/gid_idx/0")
                                     if verbose_count == 2:
                                         print("\t\t\t/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/gid_idx/0 - end")
-                            for n in range(127):    # 0 <= n <= 126
-                                if os.path.isfile("/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/pkey_idx/" + str(n)):
-                                    if is_command_allowed("file: /sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/pkey_idx/" + str(n)):
+                                for n in range(127):    # 0 <= n <= 126
+                                    if os.path.isfile("/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/pkey_idx/" + str(n)):
                                         if verbose_count == 2:
                                             print("\t\t\t/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/pkey_idx/" + str(n) + " - start")
                                         add_sriov_internal_file_if_exists("/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/pkey_idx/" + str(n))
                                         if verbose_count == 2:
                                             print("\t\t\t/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/pkey_idx/" + str(n) + " - end")
-
-    if os.path.exists("/sys/bus/pci/drivers/"):
-        for indir in os.listdir("/sys/bus/pci/drivers/"):
-            if indir.endswith("core"):
-                if is_command_allowed("file: /sys/bus/pci/drivers/"+ indir + "/unbind"):
+    if is_command_allowed("file: /sys/bus/pci/drivers/"):
+        if os.path.exists("/sys/bus/pci/drivers/"):
+            for indir in os.listdir("/sys/bus/pci/drivers/"):
+                if indir.endswith("core"):
                     if verbose_count == 2:
                         print("\t\t\t/sys/bus/pci/drivers/"+ indir + "/unbind - start")
                     add_sriov_internal_file_if_exists("/sys/bus/pci/drivers/"+ indir + "/unbind")
                     if verbose_count == 2:
                         print("\t\t\t/sys/bus/pci/drivers/"+ indir + "/unbind - end")
-                if is_command_allowed("file: /sys/bus/pci/drivers/"+ indir + "/bind"):
                     if verbose_count == 2:
                         print("\t\t\t/sys/bus/pci/drivers/"+ indir + "/bind - start")
                     add_sriov_internal_file_if_exists("/sys/bus/pci/drivers/"+ indir + "/bind")
                     if verbose_count == 2:
                         print("\t\t\t/sys/bus/pci/drivers/"+ indir + "/bind - end")
-
-    if os.path.exists("/etc/sysconfig/network-scripts/"):
-        for infile in os.listdir("/etc/sysconfig/network-scripts/"):
-            if infile.startswith("ifcfg-"):
-                if is_command_allowed("file: /etc/sysconfig/network-scripts/" + infile):
+    if is_command_allowed("file: /etc/sysconfig/network-scripts/" ):
+        if os.path.exists("/etc/sysconfig/network-scripts/"):
+            for infile in os.listdir("/etc/sysconfig/network-scripts/"):
+                if infile.startswith("ifcfg-"):
                     if verbose_count == 2:
                         print("\t\t\t/etc/sysconfig/network-scripts/" + infile + " - start")
                     add_sriov_internal_file_if_exists("/etc/sysconfig/network-scripts/" + infile)
                     if verbose_count == 2:
                         print("\t\t\t/etc/sysconfig/network-scripts/" + infile + " - end")
-
-    if os.path.exists("/sys/class/net/"):
-        for indir in os.listdir("/sys/class/net/"):
-            if os.path.isfile("/sys/class/net/" + indir) == False and (indir.startswith("eth") or indir.startswith("ib")):
-                for inSomething in os.listdir("/sys/class/net/" + indir + "/"):
-                    if os.path.isfile("/sys/class/net/" + indir + "/" + inSomething) == False:
-                        if os.path.isfile("/sys/class/net/" + indir + "/" + inSomething + "/tx_rate"):
-                            if is_command_allowed("file: /sys/class/net/" + indir + "/" + inSomething + "/tx_rate"):
+    if is_command_allowed("file: /sys/class/net/"):
+        if os.path.exists("/sys/class/net/"):
+            for indir in os.listdir("/sys/class/net/"):
+                if os.path.isfile("/sys/class/net/" + indir) == False and (indir.startswith("eth") or indir.startswith("ib")):
+                    for inSomething in os.listdir("/sys/class/net/" + indir + "/"):
+                        if os.path.isfile("/sys/class/net/" + indir + "/" + inSomething) == False:
+                            if os.path.isfile("/sys/class/net/" + indir + "/" + inSomething + "/tx_rate"):
                                 if verbose_count == 2:
                                     print("\t\t\t/sys/class/net/" + indir + "/" + inSomething + "/tx_rate - start")
                                 add_sriov_internal_file_if_exists("/sys/class/net/" + indir + "/" + inSomething + "/tx_rate")
                                 if verbose_count == 2:
                                     print("\t\t\t/sys/class/net/" + indir + "/" + inSomething + "/tx_rate - end")
-                    elif inSomething.startswith("fdb") or inSomething.startswith("mode") or inSomething.startswith("pkey"):
-                        if os.path.isfile("/sys/class/net/" + indir + "/" + inSomething):
-                            if is_command_allowed("file: /sys/class/net/" + indir + "/" + inSomething):
+                        elif inSomething.startswith("fdb") or inSomething.startswith("mode") or inSomething.startswith("pkey"):
+                            if os.path.isfile("/sys/class/net/" + indir + "/" + inSomething):
                                 if verbose_count == 2:
                                     print("\t\t\t/sys/class/net/" + indir + "/" + inSomething + " - start")
                                 add_sriov_internal_file_if_exists("/sys/class/net/" + indir + "/" + inSomething)
                                 if verbose_count == 2:
                                     print("\t\t\t/sys/class/net/" + indir + "/" + inSomething + " - end")
-
-    if os.path.exists("/sys/bus/pci/devices/"):
-        for indir in os.listdir("/sys/bus/pci/devices/"):
-            if os.path.isfile("/sys/bus/pci/devices/" + indir) == False:
-                if os.path.isfile("/sys/bus/pci/devices/" + indir + "/reset"):
-                    if is_command_allowed("file: /sys/bus/pci/devices/" + indir + "/reset"):
+    if is_command_allowed("file: /sys/bus/pci/devices/"):
+        if os.path.exists("/sys/bus/pci/devices/"):
+            for indir in os.listdir("/sys/bus/pci/devices/"):
+                if os.path.isfile("/sys/bus/pci/devices/" + indir) == False:
+                    if os.path.isfile("/sys/bus/pci/devices/" + indir + "/reset"):
                         if verbose_count == 2:
                             print("\t\t\t/sys/bus/pci/devices/" + indir + "/reset - start")
                         add_sriov_internal_file_if_exists("/sys/bus/pci/devices/" + indir + "/reset")
@@ -3663,7 +3797,7 @@ def arrange_sriov_internal_files_section():
                             print("\t\t\t/sys/bus/pci/devices/" + indir + "/reset - end")
 
     if verbose_flag:
-        print("\t\tGenerating sr-iov internal files section has ended")
+        print("\t\tGenerating sr_iov internal files section has ended")
 
 
 def arrange_sriov_dicts():
@@ -3676,16 +3810,22 @@ def arrange_sriov_dicts():
 def get_json_file_name():
     hst, curr_hostname = no_log_status_output("hostname")
     #curr_hostname = invoke_command(['hostname']).replace('\n', '-')
-    json_file_name = "sysinfo-snapshot-v" + version + "-" + curr_hostname.replace('\n', '-') + "-" + date_file
+    json_file_name = "sysinfo-snapshot-v" + version + "-"
+    if is_command_allowed("hostname") or generate_config_flag:
+        json_file_name += curr_hostname.replace('\n', '-') + "-"
+    json_file_name += date_file
     return json_file_name
 
-file_name = get_json_file_name()
+
 ###########################################################
 ############### Print Handlers ############################
 
 def print_in_process():
     print("Sysinfo-snapshot is still in process...please wait till completed successfully")
-    print("Gathering the information may take a while, especially in large networks\nYour patience is appreciated")
+    if generate_config_flag:
+        print("Generating config file \nYour patience is appreciated")
+    else:
+        print("Gathering the information may take a while, especially in large networks\nYour patience is appreciated")
 
 def print_destination_out_file():
     global csvfile
@@ -3833,7 +3973,6 @@ def core_frequency():
 #it is recommended to have hyperthreading off
 def hyper_threading():
     key = "Hyper Threading"
-
     st, siblings = get_status_output("cat /proc/cpuinfo | grep " + '"' + "siblings" + '"')
     if (st != 0):
         st, siblings_lines_num = get_status_output("cat /proc/cpuinfo | grep " + '"' + "siblings" + '"' + " | wc -l")
@@ -3957,7 +4096,7 @@ def performance_lspci(check_latest=False):
     for card in mlnx_cards:
         i += 1
         card_pci = card.split()[0]
-        pci_devices.append({"status":"OK", "name":card, "current_fw":"", "psid":"", "desired_gen":3.0, "current_gen":3.0, "desired_speed":8.0, "current_speed":8.0, "desired_width":8.0, "current_width":8.0, "desired_payload_size":256.0, "current_payload_size":8.0, "desired_max_read_request":4096.0, "current_max_read_request":4096.0})
+        pci_devices.append({"status":"OK", "name":card, "device":card_pci, "current_fw":"", "psid":"", "desired_gen":3.0, "current_gen":3.0, "desired_speed":8.0, "current_speed":8.0, "desired_width":8.0, "current_width":8.0, "desired_payload_size":256.0, "current_payload_size":8.0, "desired_max_read_request":4096.0, "current_max_read_request":4096.0})
         if ( (not "[" in card) or (not "]" in card) ):
             pci_devices[i]["status"] = not_available
             pci_devices[i]["desired_gen"] = not_available
@@ -3996,7 +4135,7 @@ def performance_lspci(check_latest=False):
             pci_devices[i]["current_fw"] = check_fw.split()[-1]
             pci_devices[i]["psid"] = check_psid.split()[-1]
             if check_latest:
-                if is_command_allowed('mlxfwmanager_online-query-psid'):
+                if is_command_allowed('mlxfwmanager --online-query-psid',"check_fw"):
                     st, check_latest_fw = get_status_output("mlxfwmanager --online-query-psid " + pci_devices[i]["psid"] , "30s")
                     if (st == 0):
                         #     FW             14.20.1010
@@ -4007,7 +4146,7 @@ def performance_lspci(check_latest=False):
                         else:
                             pci_devices[i]["current_fw"] = pci_devices[i]["current_fw"] + "(latest version)"
                 else:
-                   running_warnings.append("--check_fw flag was provided but mlxfwmanager_online-query-psid command not found")
+                   running_warnings.append("--check_fw flag was provided but mlxfwmanager --online-query-psid command not allowed")
     if is_all_failed:
         running_warnings.append("--check_fw flag was provided but running flint q for all cards failed")
     st, cards_xxx = get_status_output("lspci -d 15b3: -xxx | grep ^70")
@@ -4116,6 +4255,7 @@ def performance_lspci(check_latest=False):
 
 
 
+
 #----------------------------------------------------------
 
 def amd():
@@ -4158,7 +4298,6 @@ def bw_and_lat():
     global bandwidth
     global latency
     global perf_samples
-
     st = st_infiniband_devices
     devices = infiniband_devices
     if (st != 0 or ("No such file or directory" in devices)):
@@ -4177,70 +4316,77 @@ def bw_and_lat():
     if st != 0:
        show_gids = ""
     ##------------------------------------Samples before test------------------------------------------------##
-    for pf_device in pf_devices:
-        perf_samples[pf_device] = ""
-        st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e pause -e discards", "20s")
-        if st == 0:
-            perf_samples[pf_device] += "Before test sample: ethtool -S " + pf_device + " | grep -e pause -e discards \n" + pfc_output + "\n"
-        st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e prio", "20s")
-        if st == 0:
-            perf_samples[pf_device] += "Before test sample: ethtool -S " + pf_device + " | grep -e prio \n" + pfc_output + "\n"
-    ##------------------------------------End samples before test------------------------------------------------##
-    for device in devices:
-        perf_samples[device] = ""
-        st, cnp_files = get_status_output("ls /sys/class/infiniband/" + device + "/ports/1/hw_counters/*cnp*")
-        cnp_files = cnp_files.split()
-        ##------------------------------------Samples before test------------------------------------------------##
-        for cnp_file in cnp_files:
-            st, cnp_output = get_status_output("cat " + cnp_file)
+    if is_command_allowed('perf_samples',"no_ib,perf"):
+        for pf_device in pf_devices:
+            perf_samples[pf_device] = ""
+            st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e pause -e discards", "20s")
             if st == 0:
-                perf_samples[device] += "Before test sample: cat " + cnp_file + "\n" + cnp_output + "\n"
-        st, ecn_output = get_status_output("cat /sys/class/infiniband/" + device + "/ports/1/hw_counters/np_ecn_marked_roce_packets")
-        if st == 0:
-            perf_samples[device] += "Before test sample: cat /sys/class/infiniband/" + device + "/ports/1/hw_counters/np_ecn_marked_roce_packets \n" + ecn_output + "\n"
-        perf_samples[device] += "\n\n------------------------------------------------\n\n"
+                perf_samples[pf_device] += "Before test sample: ethtool -S " + pf_device + " | grep -e pause -e discards \n" + pfc_output + "\n"
+            st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e prio", "20s")
+            if st == 0:
+                perf_samples[pf_device] += "Before test sample: ethtool -S " + pf_device + " | grep -e prio \n" + pfc_output + "\n"
         ##------------------------------------End samples before test------------------------------------------------##
-        bandwidth[device] = ""
-        cmd = "ib_write_bw --report_gbits -d " + device + " >/dev/null & sleep 2; ib_write_bw --report_gbits -d " + device + " localhost"
-        st, bandwidth[device] = getstatusoutput(cmd)
-        bandwidth[device] = cmd + "\n\n" + bandwidth[device]
-        cmd = "ib_write_lat -d " + device + " >/dev/null & sleep 2; ib_write_lat -d " + device + " localhost"
-        st, latency[device] = getstatusoutput(cmd)
-        latency[device] = cmd + "\n\n" + latency[device]
+        for device in devices:
+            perf_samples[device] = ""
+            st, cnp_files = get_status_output("ls /sys/class/infiniband/" + device + "/ports/1/hw_counters/*cnp*")
+            cnp_files = cnp_files.split()
+        ##------------------------------------Samples before test------------------------------------------------##
+            for cnp_file in cnp_files:
+                st, cnp_output = get_status_output("cat " + cnp_file)
+                if st == 0:
+                    perf_samples[device] += "Before test sample: cat " + cnp_file + "\n" + cnp_output + "\n"
+            st, ecn_output = get_status_output("cat /sys/class/infiniband/" + device + "/ports/1/hw_counters/np_ecn_marked_roce_packets")
+            if st == 0:
+                perf_samples[device] += "Before test sample: cat /sys/class/infiniband/" + device + "/ports/1/hw_counters/np_ecn_marked_roce_packets \n" + ecn_output + "\n"
+            perf_samples[device] += "\n\n------------------------------------------------\n\n"
+        ##------------------------------------End samples before test------------------------------------------------##
+        if is_command_allowed('ib_write_bw_test',"no_ib,perf"):
+            bandwidth[device] = ""
+            cmd = "ib_write_bw --report_gbits -d " + device + " >/dev/null & sleep 2; ib_write_bw --report_gbits -d " + device + " localhost"
+            st, bandwidth[device] = getstatusoutput(cmd)
+            bandwidth[device] = cmd + "\n\n" + bandwidth[device]
+        if is_command_allowed('latency',"no_ib,perf"):
+            cmd = "ib_write_lat -d " + device + " >/dev/null & sleep 2; ib_write_lat -d " + device + " localhost"
+            st, latency[device] = getstatusoutput(cmd)
+            latency[device] = cmd + "\n\n" + latency[device]
         if device in show_gids:
             try:
                 data = show_gids.split(device)[-1].splitlines()[0].strip().split()
                 if len(data)>=5:
                     index = data[1]
-                    bandwidth[device] += "\n\n##################################################\n\n"
-                    cmd = " ib_write_bw -d " + device + " -x" + index + " >/dev/null & sleep 2; ib_write_bw -d " + device + " -x" + index + " localhost"
-                    bandwidth[device] += cmd + "\n\n"
-                    st, bandwidth_x = getstatusoutput(cmd)
-                    bandwidth[device] += bandwidth_x
-                    latency[device] += "\n\n##################################################\n\n"
-                    cmd = " ib_write_lat -d " + device + " -x" + index + " >/dev/null & sleep 2; ib_write_lat -d " + device + " -x" + index + " localhost" 
-                    latency[device] += cmd + "\n\n"
-                    st, latency_x = getstatusoutput(cmd)
-                    latency[device] += latency_x
+                    if is_command_allowed('ib_write_bw_test',"no_ib,perf"):
+                        bandwidth[device] += "\n\n##################################################\n\n"
+                        cmd = " ib_write_bw -d " + device + " -x" + index + " >/dev/null & sleep 2; ib_write_bw -d " + device + " -x" + index + " localhost"
+                        bandwidth[device] += cmd + "\n\n"
+                        st, bandwidth_x = getstatusoutput(cmd)
+                        bandwidth[device] += bandwidth_x
+                    if is_command_allowed('latency',"no_ib,perf"):
+                        latency[device] += "\n\n##################################################\n\n"
+                        cmd = " ib_write_lat -d " + device + " -x" + index + " >/dev/null & sleep 2; ib_write_lat -d " + device + " -x" + index + " localhost" 
+                        latency[device] += cmd + "\n\n"
+                        st, latency_x = getstatusoutput(cmd)
+                        latency[device] += latency_x
             except:
                 pass
         ##------------------------------------Samples after test------------------------------------------------##
-        for cnp_file in cnp_files:
-            st, cnp_output = get_status_output("cat " + cnp_file)
+        if is_command_allowed('perf_samples',"no_ib,perf"):
+            for cnp_file in cnp_files:
+                st, cnp_output = get_status_output("cat " + cnp_file)
+                if st == 0:
+                    perf_samples[device] += "After test sample: cat " + cnp_file + "\n" + cnp_output + "\n"
+            st, ecn_output = get_status_output("cat /sys/class/infiniband/" + device + "/ports/1/hw_counters/np_ecn_marked_roce_packets")
             if st == 0:
-                perf_samples[device] += "After test sample: cat " + cnp_file + "\n" + cnp_output + "\n"
-        st, ecn_output = get_status_output("cat /sys/class/infiniband/" + device + "/ports/1/hw_counters/np_ecn_marked_roce_packets")
-        if st == 0:
-            perf_samples[device] += "After test sample: cat /sys/class/infiniband/" + device + "/ports/1/hw_counters/np_ecn_marked_roce_packets \n" + ecn_output + "\n"
+                perf_samples[device] += "After test sample: cat /sys/class/infiniband/" + device + "/ports/1/hw_counters/np_ecn_marked_roce_packets \n" + ecn_output + "\n"
         ##------------------------------------End samples after test------------------------------------------------##
     ##------------------------------------Samples after test------------------------------------------------##
-    for pf_device in pf_devices:
-        st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e pause -e discards", "20s")
-        if st == 0:
-            perf_samples[pf_device] += "After test sample: ethtool -S " + pf_device + " | grep -e pause -e discards \n" + pfc_output + "\n"
-        st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e prio", "20s")
-        if st == 0:
-            perf_samples[pf_device] += "After test sample: ethtool -S " + pf_device + " | grep -e prio \n" + pfc_output + "\n"
+    if is_command_allowed('perf_samples',"no_ib,perf"):
+        for pf_device in pf_devices:
+            st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e pause -e discards", "20s")
+            if st == 0:
+                perf_samples[pf_device] += "After test sample: ethtool -S " + pf_device + " | grep -e pause -e discards \n" + pfc_output + "\n"
+            st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e prio", "20s")
+            if st == 0:
+                perf_samples[pf_device] += "After test sample: ethtool -S " + pf_device + " | grep -e prio \n" + pfc_output + "\n"
     ##------------------------------------End samples after test------------------------------------------------##
 #==========================================================
 
@@ -4250,7 +4396,6 @@ def init_status_dict():
         perf_val_dict[key] = not_available
 
 def perform_checkings():
-
     if is_command_allowed('hyper_threading'):
         if verbose_count == 2:
             print("\t\t\thyper_threading - start")
@@ -4269,13 +4414,13 @@ def perform_checkings():
         irqbalance()
         if verbose_count == 2:
             print("\t\t\tirqbalance - end")
-    if is_command_allowed('lspci'):
+    if is_command_allowed('performance_lspci'):
         if verbose_count == 2:
             print("\t\t\tlspci - start")
         performance_lspci(check_fw_flag)
         if verbose_count == 2:
             print("\t\t\tlspci - end")
-    if is_command_allowed('amd'):
+    if is_command_allowed('dmidecode -s processor-manufacturer'):
         if verbose_count == 2:
             print("\t\t\tamd - start")
         amd()
@@ -4287,14 +4432,14 @@ def perform_checkings():
         memlock()
         if verbose_count == 2:
             print("\t\t\tmemlock - end")
-    if (is_ib != 0):
-        if is_command_allowed('ip_forwarding'):
+    if is_command_allowed('ip_forwarding'):
+        if (is_ib != 0):
             if verbose_count == 2:
                 print("\t\t\tip_forwarding - start")
             ip_forwarding()
             if verbose_count == 2:
                 print("\t\t\tip_forwarding - end")
-    elif (no_ib_flag == False and perf_flag == True) and is_command_allowed('bw_and_lat'):
+    elif (no_ib_flag == False and perf_flag == True  ) :
         if verbose_count == 2:
             print("\t\t\tbw_and_lat - start")
         bw_and_lat()
@@ -4331,7 +4476,6 @@ def initialize_html(html_flag):
         return
     html_flag = 1
     html = open(html_path, 'w+')
-
     html.write("<html>")
     html.write("<head><title>" + html_path + "</title></head>")
     html.write("<body><pre>")
@@ -4400,6 +4544,10 @@ def initialize_html(html_flag):
         html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: Rdma commands with iprout2 are included. (--rdma debug flag was provided)</font></p>")
     else:
          html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: Rdma commands with iprout2 are NOT included. (--rdma debug flag was not provided)</font></p>")
+    if gpu_flag:
+        html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: Nvidia GPU commands are included. (--gpu flag was provided)</font></p>")
+    else:
+         html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: Nvidia GPU commands are NOT included. (--gpu flag was not provided)</font></p>")
     # Add no mlnx cards alert if needed
     if (mlnx_cards_status < 0):
         html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: Unable to count Mellanox cards. </font></p>")
@@ -4494,7 +4642,7 @@ def html_write_paragraph(html, base, collection, dict, prev_parag_end):
         # Add command output/content
         if ( (original_collection == available_commands_collection)
             and ( collection[i] in available_commands_collection[not is_command_string])):
-            array_output_links_collection = ["fw_ini_dump","mst-func","asap","asap_tc","rdma_tool","/sys/class/net/ecn","/etc/mlnx_snap","/sys/kernel/debug/mlx5/cc_params/","show_irq_affinity_all","mlxcables","mlxcables --DDM/--read_all_regs","/etc/NetworkManager/system-connections/"]
+            array_output_links_collection = ["fw_ini_dump","mst_commands_query_output","asap_parameters","asap_tc_information","rdma_tool","ecn_configuration","/etc/mlnx_snap","congestion_control_parameters","show_irq_affinity_all","mlxcables","networkManager_system_connections"]
             html.write("<p>")
             if (collection[i] == "ethtool_all_interfaces") or (collection[i] == "devlink_handler") :
                 content = dict[collection[i]]
@@ -4541,20 +4689,20 @@ def build_and_finalize_html():
     #=======================END OF SERVER COMMANDS SECTION =======================
 
     #=======================BEGIN OF FABRIC DIGNASTICS SECTION ===================
-    if (is_ib == 0 and no_ib_flag == False):
+    if (st_saquery == 0 and no_ib_flag == False):
         html_write_section(html, "2. Fabric Diagnostic Information: ", available_fabric_commands_collection, 2000)
 
     #=======================END OF FABRIC DIGNASTICS SECTION =====================
 
     #=======================BEGIN OF FILES SECTION ===============================
 
-    if (is_ib == 0 and no_ib_flag == False):
+    if (st_saquery == 0 and no_ib_flag == False):
         html_write_section(html, "3. Internal Files: ", available_internal_files_collection, 3000)
     else:
         html_write_section(html, "2. Internal Files: ", available_internal_files_collection, 3000)
 
     #=======================EXTERNAL FILES =======================================
-    if (is_ib == 0 and no_ib_flag == False):
+    if (st_saquery == 0 and no_ib_flag == False):
         html.write("<h2>4. External Files/commands:</h2>")
     else:
         html.write("<h2>3. External Files/commands:</h2>")
@@ -4594,7 +4742,7 @@ def build_and_finalize_html():
     #=============================================================================
     #=======================Paragraph 2 - Fabric Commands ========================
 
-    if (is_ib == 0 and no_ib_flag == False): # IB Fabric
+    if (st_saquery == 0 and no_ib_flag == False): # IB Fabric
         parag_2_end = html_write_paragraph(html, 2000, available_fabric_commands_collection, fabric_commands_dict, parag_1_end)
     else:
         parag_2_end = parag_1_end
@@ -4835,7 +4983,7 @@ def build_and_finalize_html2():
 
     #=======================BEGIN OF EXTERNAL FILES SECTION ====================
 
-    if (no_ib_flag == False and os.path.exists(path+file_name+"/mlnx_tune_r") == True):
+    if (no_ib_flag == False and os.path.exists(path+file_name+"/commands_txt_output/mlnx_tune_r") == True):
         html2.write("<h2>2. External Files/commands:</h2>")
         html2.write("<table cols="+'"'+"4"+'"'+" width=" + '"' + "100%" + '"' + " border=" + '"' + "0" + '"' + " bgcolor="+'"'+"#E0E0FF"+'"'+">")
         html2.write("<tr>")
@@ -4857,7 +5005,7 @@ def build_and_finalize_html2():
 
             # pair[0] is field name
             # pair[1] is external file name
-            html2.write("<td width=" + '"' + "16%" +'"' + "><a href=" + pair[1] + ">" + pair[0] + "</a></td>")
+            html2.write("<td width=" + '"' + "16%" +'"' + "><a href='commands_txt_output/" + pair[1] + "'>" + pair[0] + "</a></td>")
             c = c+1
             if ( (c % 6) == 0):
                 html2.write("</tr><tr>")
@@ -4893,7 +5041,7 @@ def initialize_html3(html3_flag):
     html3.write("<body><pre>")
     html3.write("<a name=" + '"' + "index" + '"' + "></a><h1>Mellanox Technologies</h1>")
     html3.write("<br/>")
-    html3.write("<a name=" + '"' + "index" + '"' + "></a><h2>Single Root IO Virtualization (SR-IOV)</h2>")
+    html3.write("<a name=" + '"' + "index" + '"' + "></a><h2>Single Root IO Virtualization (SR_IOV)</h2>")
     html3.write("<br/>")
     html3.write("<a name=" + '"' + "index" + '"' + "></a><h2>Version: " + sriov_version + "</h2>")
     html3.write("<br/><hr/>")
@@ -4908,7 +5056,7 @@ def build_and_finalize_html3():
     #=======================PRINT PROPER MESSAGE - NO SRIOV ====================
 
     if len(available_sriov_commands_collection) == 0 and len(available_sriov_internal_files_collection) == 0:
-        html3.write("There are neither available SR-IOV commands nor available SR-IOV related internal files")
+        html3.write("There are neither available SR_IOV commands nor available SR_IOV related internal files")
         html3.write("</body></pre>")
         html3.write("</html>")
         html3.close()
@@ -4924,7 +5072,7 @@ def build_and_finalize_html3():
     if_section_num = "1. "
     if_index = 1000
     if len(available_sriov_commands_collection) > 0:
-        html_write_section(html3, "1. SR-IOV Commands: ", available_sriov_commands_collection, 1000)
+        html_write_section(html3, "1. SR_IOV Commands: ", available_sriov_commands_collection, 1000)
         if_section_num = "2. "
         if_index = 2000
 
@@ -4932,7 +5080,7 @@ def build_and_finalize_html3():
     #=======================BEGIN OF SR-IOV INTERNAL FILES SECTION =============
 
     if len(available_sriov_internal_files_collection) > 0:
-        html_write_section(html3, if_section_num + "SR-IOV Related Internal Files: ", available_sriov_internal_files_collection, if_index)
+        html_write_section(html3, if_section_num + "SR_IOV Related Internal Files: ", available_sriov_internal_files_collection, if_index)
 
     #=======================END OF SR-IOV INTERNAL FILES SECTION ===============
 
@@ -5060,18 +5208,12 @@ def generate_pcie_debug_info():
             # add_output_to_pcie_debug_dict("mlxlink_mstlink", result)
         elif "dmesg" in command:
             add_external_file_if_exists("dmesg -T", "dmesg")
-        elif "lspci -vvvxxxxx" in command:
-            status, command_output = get_status_output(command)
-            add_output_to_pcie_folder("full_lspci", command_output)
-        elif "mst-func" in command:
+        elif "mst_commands_query_output" in command:
             mst_func_handler()
             # add_output_to_pcie_debug_dict("lspci -vv", result)
         elif "lscpu" in command:
             status, result = get_status_output(command)
             add_output_to_pcie_folder("lspcu", result)
-        elif "lspci -tv" in command:
-            status, result = get_status_output(command)
-            add_output_to_pcie_folder("lspci_tv", result)
         else:
             add_command_to_pcie_debug_dict(command)
     arrange_pcie_debugging_output()
@@ -5096,11 +5238,11 @@ def create_tar_file():
     # Arrange status log and copy it into the tar file
     arrange_command_status_log()
     try:
-        tar = tarfile.open(path + file_name + ".tgz", "w:gz")
+        tar = tarfile.open(path + file_name + ".tgz", "w")
         tar.add(path + file_name, arcname = file_name)
         tar.close()
-    except:
-        get_status_output('tar --format=posix -zcvf ' + path + file_name + ".tgz " + path + file_name,"20s")
+    except :
+        get_status_output('tar -zcvf ' + path + file_name + ".tgz " + path + file_name,"20s")
 
 def generate_output():
     global csvfile
@@ -5114,7 +5256,6 @@ def generate_output():
     # Create output directories
     ensure_out_dir_existence()
     no_log_status_output("mkdir " + path + file_name)
-
     #invoke_command(['mkdir', path + file_name])
     no_log_status_output("mkdir " + path + file_name + "/tmp")
     #invoke_command(['mkdir', path + file_name + "/tmp"])
@@ -5127,8 +5268,6 @@ def generate_output():
     no_log_status_output("mkdir " + path + file_name + "/pcie_files")
     #cables:
     no_log_status_output("mkdir " + path + file_name + "/cables")
-    #lspci:
-    no_log_status_output("mkdir " + path + file_name + "/lspci_output")
     if asap_flag:
         no_log_status_output("mkdir " + path + file_name + "/asap")
         #invoke_command(['mkdir', path + file_name + "/asap"])
@@ -5140,7 +5279,6 @@ def generate_output():
         no_log_status_output("mkdir " + path + file_name + "/rdma_tool")
     # Create empty log files
     create_empty_log_files()
-
     if verbose_flag:
         print("------------------------------------------------------------\n")
         print("Loading modules via 'mst start'. (will be reverted to initial state at end of run)\n")
@@ -5164,12 +5302,13 @@ def generate_output():
     if sriov_exists:
         # Generating sriov html
         if verbose_flag and not generate_config_flag:
-            print("\tGenerating sr-iov HTML page has started")
+            print("\tGenerating sr_iov HTML page has started")
         initialize_html3(html3_flag)
         arrange_sriov_dicts()
         if verbose_flag and not generate_config_flag:
-            print("\tGenerating sr-iov HTML page has ended")
-
+            print("\tGenerating sr_iov HTML page has ended")
+    elif generate_config_flag:
+        arrange_sriov_dicts()
     if verbose_flag:
         print("\tDiscovering installed IB cards, ports and subnets has started")
     if (is_ib == 0 and no_ib_flag == False):
@@ -5188,6 +5327,22 @@ def generate_output():
 
     # operation is done here
     arrange_dicts()
+    #generate sub chain commands in config file
+    if generate_config_flag:
+        for command in sub_chain_commands:
+            related_flag = ""
+            if command == "ibdiagnet":
+                related_flag = "no_ib/ibdiagnet"
+            elif command == "mlxfwmanager --online-query-psid":
+                related_flag = "check_fw"
+            elif command == "ib_write_bw_test" or command =="latency"or command =="perf_samples":
+                related_flag= "no_ib/perf"
+            elif command in fabric_commands_collection or command in fabric_multi_sub_commands_collection:
+                related_flag= "no_ib"
+            is_command_allowed(command,related_flag)
+    # copy config file to .tgz output
+    if config_file_flag:
+        st , out = get_status_output("cp " + config_path + " " + path + file_name )
     # Major operations for creating the .json file
     if (verbose_flag == True and json_flag == True and not generate_config_flag):
         print("\t----------------------------------------------------")
@@ -5233,15 +5388,16 @@ def generate_output():
 
     # Print generated config file message
     if generate_config_flag:
-        csv_writer = csv.writer(csvfile)
-        csv_writer.writerows(config_dict.items())
+        config_dir = os.path.dirname(config_path)
+        csv_writer = csv.writer(csvfile,lineterminator="\n")
+        for key, value in config_dict.items():
+            csv_writer.writerow([key, value["approved"],value["related flag"]])
         csvfile.close()
         print("\t----------------------------------------------------\n")
         print("Generating a new configuration file has ended successfully")
-        print("The temporary destination directory is /tmp/\n")
+        print("The temporary destination directory is "+ config_dir +"\n")
         remove_unwanted_files()
         return
-
     if verbose_flag and not generate_config_flag:
         print("Creating tgz file has started")
     # Create result tar file
@@ -5285,20 +5441,43 @@ def update_flags(args):
     global asap_flag
     global asap_tc_flag
     global rdma_debug_flag
+    global gpu_flag
     global config_dict
+    global config_path
+    global file_name
 
     isFile = False
+    if (args.config):
+        config_file_flag = True
+        config_path = args.config
+        try:
+            with open(config_path, 'r') as csvfile:
+                reader = csv.reader(csvfile)
+                next(reader)
+                config_dict = {rows[0]:{"approved":rows[1],"related flag":rows[2]} for rows in reader}
+            #e.g config_dict{COMMAND_CSV_HEADER: INVOKED_CSV_HEADER }
+        except:
+            print('Unable to read the configuration file. Please make sure that config file(config.csv) is in the same directory\n')
+            parser.print_help()
+            sys.exit(1)
     if (args.dir):
         path = args.dir
-        html_path = path + file_name + "/" + file_name + ".html"
-        html2_path = path + file_name + "/performance-tuning-analyze.html"
-        html3_path = path + file_name + "/sr-iov.html"
+        html_file_name = ""
+        if is_command_allowed("hostname") or generate_config_flag:
+            hst, curr_hostname = no_log_status_output("hostname")
+            html_file_name = curr_hostname.replace('\n', '-') + "-" + date_file
+        else:
+            html_file_name = "sysinfo-snapshot" + "-" + date_file
+        file_name = get_json_file_name()
+        html_path = path + file_name + "/" + html_file_name + ".html"
+        html2_path = path + file_name + "/performance_tuning_analyze.html"
+        html3_path = path + file_name + "/sr_iov.html"
         if (len(path) > 0):
             if (not path.endswith("/")):
                 path = path + "/"
-                html_path = path + file_name + "/" + file_name + ".html"
-                html2_path = path + file_name + "/performance-tuning-analyze.html"
-                html3_path = path + file_name + "/sr-iov.html"
+                html_path = path + file_name + "/" + html_file_name + ".html"
+                html2_path = path + file_name + "/performance_tuning_analyze.html"
+                html3_path = path + file_name + "/sr_iov.html"
             if (os.path.isfile(path[:-1]) == True):
                 isFile = True
     if (args.no_fw):
@@ -5328,38 +5507,37 @@ def update_flags(args):
         asap_tc_flag = True
     if (args.rdma_debug):
         rdma_debug_flag = True
+    if (args.gpu):
+        gpu_flag = True
     if (args.json):
         json_flag = True
     if (args.pcie):
         pcie_flag = True
-    if (args.config):
-        config_file_flag = True
-        config_path = args.config
-        try:
-            with open(config_path, 'r') as csvfile:
-                reader = csv.reader(csvfile)
-                config_dict = dict((k, v) for k, v in reader)
-            #e.g config_dict{COMMAND_CSV_HEADER: INVOKED_CSV_HEADER }
-        except:
-            print('Unable to read the configuration file. Please make sure that config file(config.csv) is in the same directory\n')
-            parser.print_help()
-            sys.exit(1)
     if (args.generate_config):
         generate_config_flag = True
         config_path = args.generate_config
-        csvfile = open(config_path, 'w+')
-        fieldnames = [COMMAND_CSV_HEADER, INVOKED_CSV_HEADER]
-        config_file = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        if (sys.version_info[0] == 2 and sys.version_info[1] < 7 ):
-            config_file.writerow({COMMAND_CSV_HEADER: COMMAND_CSV_HEADER,
-                     INVOKED_CSV_HEADER: INVOKED_CSV_HEADER})
+        if not ( os.path.isdir(config_path)):
+            try:
+                csvfile = open(config_path, 'w+')
+                csvfile.write("Generated by sysinfo-snapshot version " + version +" \n")
+                fieldnames = [COMMAND_CSV_HEADER, INVOKED_CSV_HEADER,FLAG_RELATED_HEADER]
+                config_file = csv.DictWriter(csvfile, fieldnames=fieldnames,lineterminator="\n")
+                if (sys.version_info[0] == 2 and sys.version_info[1] < 7 ):
+                    config_file.writerow({COMMAND_CSV_HEADER: COMMAND_CSV_HEADER,
+                            INVOKED_CSV_HEADER: INVOKED_CSV_HEADER},{FLAG_RELATED_HEADER})
+                else:
+                    config_file.writeheader()
+                config_dict = {}
+            except PermissionError:
+                print('Unable to create a configuration file due to pemissions, please make sure that you have the required acsses permission to the provided path .\n')
+                parser.print_help()
+                sys.exit(1)
+            except:
+                print('Unable to create a configuration file .\n')
+                parser.print_help()
+                sys.exit(1)
         else:
-            config_file.writeheader()
-        config_dict = {}
-        try:
-            pass
-        except:
-            print('Unable to create a default configuration file .\n')
+            print('Unable to find configuration file. Please make sure that config file(config.csv) is in the provided directory\n')
             parser.print_help()
             sys.exit(1)
     if (args.check_fw):
@@ -5373,26 +5551,26 @@ def update_flags(args):
 
     if (args.mtusb):
         mtusb_flag = True
-        # Change Name: mst-func --> mst-func / i2c-mst-func
+        # Change Name: mst_commands_query_output --> mst_commands_query_output / i2c-mst_commands_query_output
         try:
-            commands_collection.remove('mst-func')
+            commands_collection.remove('mst_commands_query_output')
         except:
             pass
-        commands_collection.extend(['mst-func / i2c-mst-func'])
+        commands_collection.extend(['mst_commands_query_output / i2c-mst_commands_query_output'])
         try:
-            fw_collection.remove('mst-func')
+            fw_collection.remove('mst_commands_query_output')
         except:
             pass
-        fw_collection.extend(['mst-func / i2c-mst-func'])
+        fw_collection.extend(['mst_commands_query_output / i2c-mst_commands_query_output'])
 
 def execute(args):
     global len_argv
     global csvfile
     global config_file
     global config_dict
-
+    global file_name
     update_flags(args)
-
+    file_name = get_json_file_name()
     if args.pcie_debug:
         print('Running sysinfo-snapshot to generate PCIE debug info.')
         generate_pcie_debug_info()
@@ -5435,7 +5613,7 @@ def get_parsed_args():
     if (sys.version_info[0] == 2 and sys.version_info[1] < 7 ):
         parser = OptionParser(prog='Sysinfo-snapshot', usage=' %prog version: ' + version + ' [options]'
                                                                         + "\n\tThe sysinfo-snapshot command gathers system information and places it into a tar file."
-                                                                        + "\n\tIt is required to run this script as super user (root).")
+                                                                        + "\n\tIt is required to run this script as super user (root) and using python 2.7 or higher version")
         parser.add_option("-d", "--dir", dest="dir", default='/tmp/', action="callback", callback=dir_callback, help="set destination directory (default is /tmp/).")
         parser.add_option("-v", "--version", help="show the tool's version information and exit.", action='store_true')
         parser.add_option("-p", "--perf",  help="include more performance commands/functions, e.g. ib_write_bw and ib_write_lat.", action='store_true')
@@ -5451,13 +5629,15 @@ def get_parsed_args():
         parser.add_option("--asap", help="gather asap relevant commands output", action='store_true')
         parser.add_option("--asap_tc", help="gather asap tc filter commands output", action='store_true')
         parser.add_option("--rdma_debug", help="gather rdma tool that comes with iproute2 commands output", action='store_true')
+        parser.add_option("--gpu", help="gather Nvidia GPU commands", action='store_true')
         parser.add_option("--json", help="add json file to the output.", action='store_true')
         parser.add_option("--pcie", help="add pcie commands/functions to the output.", action='store_true')
         parser.add_option("--pcie_debug", help="generate only pcie debug info.", action='store_true')
-        parser.add_option("--config", dest="config", action="callback", callback=config_callback, help="set the customized configuration file path, to choose which commands are approved to run.\n"
-                                                                                    + "In case a path is not provided, the default file(config.csv) path is for the same directory.")
-        parser.add_option("--generate_config", dest="generate_config", action="callback", callback=config_callback, help="set the file path of the generated configuration file, by default all commands are approved to be invoked.\n"
-                                                                                            + "In case a path is not provided, the default file(config.csv) path is for the same directory.")
+        parser.add_option("--config", dest="config", action="callback", callback=config_callback, help="set the customized configuration file path including filename, to choose which commands are approved to run.\n"
+                                                                                    + "In case a path is not provided, the default file name(config.csv) and it path are set for the same directory.")
+        parser.add_option("--generate_config", dest="generate_config", action="callback", callback=config_callback, help="Generates configuration file under provided path,Path must be full path, including file name.\n"
+                                                                                           +"Generated config file will include all the commands available in the script listed.\n By default all the commands that run will be marked as yes for execution, unless additional flag is required for them.\n"
+                                                                                            + "In case a path is not provided, a default path is assumed, which is current directory with config.csv file name.")
         parser.add_option("--check_fw", help="check if the current adapter firmware is the latest version released, output in performance html file [Internet access is required]", action='store_true')
         parser.add_option("--verbose", help="first verbosity level, available if option is provided only once, lists sections in process.second verbosity level, available if option is provided twice, lists sections and commands in process.", action='count')
         (options, args)  = parser.parse_args()
@@ -5469,7 +5649,7 @@ def get_parsed_args():
         import argparse
         parser = argparse.ArgumentParser(prog='Sysinfo-snapshot', usage=' %(prog)s version: ' + version + ' [options]'
                                                                     + "\n\tThe sysinfo-snapshot command gathers system information and places it into a tar file."
-                                                                    + "\n\tIt is required to run this script as super user (root).")
+                                                                    + "\n\tIt is required to run this script as super user (root) and using python 2.7 or higher version.")
         parser.add_argument("-d", "--dir", nargs="?", const="/tmp/", default="/tmp/", help="set destination directory (default is /tmp/).")
         parser.add_argument("-v", "--version", help="show the tool's version information and exit.", action='store_true')
         parser.add_argument("-p", "--perf",  help="include more performance commands/functions, e.g. ib_write_bw and ib_write_lat.", action='store_true')
@@ -5485,13 +5665,15 @@ def get_parsed_args():
         parser.add_argument("--asap", help="gather asap relevant commands output", action='store_true')
         parser.add_argument("--asap_tc", help="gather asap tc filter commands output", action='store_true')
         parser.add_argument("--rdma_debug", help="gather rdma tool that comes with iproute2 commands output", action='store_true')
+        parser.add_argument("--gpu", help="gather Nvidia GPU commands", action='store_true')
         parser.add_argument("--json", help="add json file to the output.", action='store_true')
         parser.add_argument("--pcie", help="add pcie commands/functions to the output.", action='store_true')
         parser.add_argument("--pcie_debug", help="generate only pcie debug info.", action='store_true')
-        parser.add_argument("--config", nargs="?", const=DEFAULT_CONFIG_PATH, help="set the customized configuration file path, to choose which commands are approved to run.\n"
-                                                                                    + "In case a path is not provided, the default file(config.csv) path is for the same directory.")
-        parser.add_argument("--generate_config", nargs="?", const=DEFAULT_CONFIG_PATH, help="set the file path of the generated configuration file, by default all commands are approved to be invoked.\n"
-                                                                                            + "In case a path is not provided, the default file(config.csv) path is for the same directory.")
+        parser.add_argument("--config", nargs="?", const=DEFAULT_CONFIG_PATH, help="set the customized configuration file path including the filename, to choose which commands are approved to run.\n"
+                                                                                    + "In case a path is not provided, the default file name(config.csv) and it path are set for the same directory.")
+        parser.add_argument("--generate_config", nargs="?", const=DEFAULT_CONFIG_PATH, help="Generates configuration file under provided path,Path must be full path, including file name.\n"
+                                                                                           +"Generated config file will include all the commands available in the script listed.\n By default all the commands that run will be marked as yes for execution,unless additional flag is required for them.\n"
+                                                                                            + "In case a path is not provided, a default path is assumed, which is current directory with config.csv file name.")
         parser.add_argument("--check_fw", help="check if the current adapter firmware is the latest version released, output in performance html file [Internet access is required]", action='store_true')
         parser.add_argument("--verbose", help="first verbosity level, available if option is provided only once, lists sections in process.second verbosity level, available if option is provided twice, lists sections and commands in process.", action='count')
         args = parser.parse_args()
