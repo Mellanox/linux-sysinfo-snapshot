@@ -31,12 +31,12 @@ Running Sysinfo Snapshot without a configuration file will gather the relevant i
 configuration on the server and Nvidia's adapters, By adding additional flags, the user will have more   \
 control on the generated output, for more detailed information regarding the flags, please refer to  section 5.3 - Script flags.
 
-To run the script without a configuration:\
-1. Untar the file by invoking - tar -zxvf sysinfo-snapshot-<version>.tgz\
-2. Run the following command (as admin):\
-#./sysinfo-snapshot.py <relevant flags> \
-3. Extract the tar file from the default directory: /tmp/ \
-4. Open the relevant html/text files \
+To run the script without a configuration:
+1. Untar the file by invoking - tar -zxvf sysinfo-snapshot-<version>.tgz
+2. Run the following command (as admin):
+#./sysinfo-snapshot.py <relevant flags> 
+3. Extract the tar file from the default directory: /tmp/
+4. Open the relevant html/text files 
 
 5.2 Running the tool with a configuration file 
 Running Sysinfo Snapshot with a configuration file will provide a more advanced control on the
