@@ -121,6 +121,10 @@ in the performance html file (Internet access is required). \
 5.3.23 --verbose \
 first verbosity level, available if option is provided only once, lists sections in process.second verbosity \
 level, vailable if option is provided twice, lists sections and commands in process. \
+5.3.24 -t | --non_root \
+Allow the tool to run as non-root user, commands/files that require root permissions are missing.\
+5.3.25 -t | --nvsm_dump \
+Collect nvsm dump health.\
 
 6. Generate Config – Guidelines
 
