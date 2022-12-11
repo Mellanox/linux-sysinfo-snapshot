@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- python -*-
 #
 # Author:    Nizar Swidan  nizars@mellanox.com -- Created: 2015
@@ -38,7 +38,6 @@ COMMAND_CSV_HEADER = 'Command'
 INVOKED_CSV_HEADER = 'Approved'
 FLAG_RELATED_HEADER = "related flag"
 DEFAULT_CONFIG_PATH = './config.csv'
-DEFAULT_CONFIG_FILENAME = "/config.csv"
 DEFAULT_PATH = '/tmp/'
 
 ######################################################################################################
@@ -71,7 +70,7 @@ def no_log_status_output(command, timeout='10s'):
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.7.0"
+version = "3.7.5"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -110,7 +109,8 @@ st_saquery = 1
 sys_class_net_exists = False
 blueos_flag = False
 missing_critical_info = False # True --> Sysinfo-snapshot is missing some critical debugging information
-
+non_root = False
+nvsm_dump_flag = False
 ######################################################################################################
 #                Initialize Environment Variables
 is_ib, ib_res = no_log_status_output("which ibnetdiscover 2>/dev/null")
@@ -145,7 +145,7 @@ not_present = "Not Present"
 present = "Present"
 perf_status_dict = {}
 perf_val_dict = {}
-perf_external_files_collection = [["mlnx_tune -r", "mlnx_tune_r"]]
+perf_external_files_collection = [["mlnx_tune -r -i "+ path + file_name, "mlnx_tune_r"]]
 perf_samples = {}
 bandwidth = {}
 latency = {}
@@ -243,7 +243,7 @@ commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --
                         ,"congestion_control_parameters","ecn_configuration","lsblk", "journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
                         ,"nvidia-smi topo -m", "nvidia-smi", "lspci -tv |grep 'NVIDIA' -A7", "nvidia-smi -q -d clock", "nvidia-smi --format=csv --query-supported-clocks=gr,mem", "ib_write_bw -h | grep -i cuda", "modinfo nv_peer_mem",\
                         "/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --dtoh", "/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --htod"\
-                        , "/etc/init.d/nv_peer_mem status","/usr/local/cuda/extras/demo_suite/deviceQuery","ibstatus","ibstat","ucx_info -v"]
+                        , "/etc/init.d/nv_peer_mem status","/usr/local/cuda/extras/demo_suite/deviceQuery","ibstatus","ibstat","ucx_info -v", "dpkg -l net-tools | cat", "mdadm -D /dev/md*","hwloc-ls -v","systemctl list-units","nvsm dump health"]
 available_commands_collection = [[],[]]
 available_PCIE_debugging_collection_dict = {}
 fabric_commands_collection = [ "ib_mc_info_show", "sm_version", "Multicast_Information", "perfquery_cards_ports"]
@@ -252,7 +252,7 @@ available_fabric_commands_collection = []
 internal_files_collection = ["/sys/devices/system/clocksource/clocksource0/current_clocksource", "/sys/fs/cgroup/net_prio/net_prio.ifpriomap", "/etc/opensm/partitions.conf","/etc/opensm/opensm.conf", "/etc/default/mlnx_snap","/etc/modprobe.d/vxlan.conf", "/etc/security/limits.conf", "/boot/grub/grub.cfg","/boot/grub2/grub.cfg","/boot/grub/grub.conf","/boot/grub2/grub.conf", "/boot/grub/menu.lst","/boot/grub2/menu.lst","/etc/default/grub", "/etc/host.conf", "/etc/hosts", "/etc/hosts.allow", "/etc/hosts.deny", "/etc/issue", "/etc/modprobe.conf","/etc/udev/udev.conf" ,"/etc/ntp.conf", "/etc/resolv.conf", "/etc/sysctl.conf", "/etc/tuned.conf","/etc/dhcp/dhclient.conf","/etc/yum.conf","/etc/bluefield_version", "/proc/cmdline", "/proc/cpuinfo", "/proc/devices", "/proc/diskstats", "/proc/dma", "/proc/meminfo", "/proc/modules", "/proc/mounts", "/proc/net/dev_mcast", "/proc/net/igmp", "/proc/partitions", "/proc/stat", "/proc/sys/net/ipv4/igmp_max_memberships", "/proc/sys/net/ipv4/igmp_max_msf","/proc/uptime", "/proc/version", "/etc/rdma/rdma.conf","/etc/systemd/system/mlnx_interface_mgr@.service","/etc/systemd/system/sysinit.target.wants/openibd.service","/etc/systemd/system/network-online.target.wants/NetworkManager-wait-online.service", "/proc/net/softnet_stat", "/proc/buddyinfo", "/proc/slabinfo", "/proc/pagetypeinfo"]
 available_internal_files_collection = []
 # [field_name, file_name to cat]
-external_files_collection = [["kernel config", "/boot/config-$(uname -r)"],["mlxcables --DDM/--read_all_regs","cables/mlxcables_options_output"] ,["config.gz", "/proc/config.gz"],["zoneinfo","/proc/zoneinfo"],[ "interrupts","/proc/interrupts"],["lstopo-no-graphics","lstopo-no-graphics"] ,["lstopo-no-graphics -v -c","lstopo-no-graphics -v -c"],["lspci","lspci"],["lspci -vvvxxxxx","lspci -vvvxxxxx"],["lspci -xxxvvv","lspci -xxxvvv"],["ps -eLo","ps -eLo"],["ucx_info -c", "ucx_info -c"],["ucx_info -f","ucx_info -f"],["sysctl -a","sysctl -a"], ["netstat -anp","netstat -anp"] ,["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR_IOV", ""],["other_system_files",""],["numa_node",""]]
+external_files_collection = [["kernel config", "/boot/config-$(uname -r)"],["mlxcables --DDM/--dump","cables/mlxcables_options_output"] ,["config.gz", "/proc/config.gz"],["zoneinfo","/proc/zoneinfo"],[ "interrupts","/proc/interrupts"],["lstopo-no-graphics","lstopo-no-graphics"] ,["lstopo-no-graphics -v -c","lstopo-no-graphics -v -c"],["lspci","lspci"],["lspci -vvvxxxxx","lspci -vvvxxxxx"],["lspci -xxxvvv","lspci -xxxvvv"],["ps -eLo","ps -eLo"],["ucx_info -c", "ucx_info -c"],["ucx_info -f","ucx_info -f"],["sysctl -a","sysctl -a"], ["netstat -anp","netstat -anp"] ,["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR_IOV", ""],["other_system_files",""],["numa_node",""],["trace","/sys/kernel/debug/tracing/trace"]]
 available_external_files_collection = []
 copy_under_files = [["etc_udev_rulesd", "/etc/udev/rules.d/"], ["lib_udev_rulesd", "/lib/udev/rules.d/"]]
 copy_openstack_dirs  = [["conf_nova", "/var/lib/config-data/puppet-generated/nova_libvirt"], ["conf_nuetron", "/var/lib/config-data/puppet-generated/neutron/"]]
@@ -260,7 +260,7 @@ copy_openstack_files  = [["logs_nova", "/var/log/containers/nova/nova-compute.lo
 critical_failed_commands = [] # Critical commands that failed
 running_warnings = []
 #commands that are part of higher chain commands ,used when generating config file
-sub_chain_commands = ["file: var/log/syslog","file: var/log/messages","file: var/log/boot.log","mlnx_tune","ib_write_bw_test","latency","perf_samples","mlxfwmanager --online-query-psid","file: /sys/class/infiniband/*/iov","file: /sys/class/infiniband/*/device/"]
+sub_chain_commands = ["file: var/log/syslog", "file: var/log/messages", "file: var/log/boot.log", "mlnx_tune -i " + path + file_name, "ib_write_bw_test", "latency", "perf_samples", "mlxfwmanager --online-query-psid", "file: /sys/class/infiniband/*/iov", "file: /sys/class/infiniband/*/device/"]
 critical_collection = PCIE_debugging_collection # List of all critical commands
 critical_collection.append("general_fw_command_output")
 critical_collection.append("mstcommand_d_handler")
@@ -276,7 +276,7 @@ supported_os_collection = ["redhat", "suse", "debian"]
 # A function to log every command invoked on the host: command, passed/filed, time taken
 # A critical command is a command which is used for PCIE debugging. Found in PCIE_debugging_collection
 
-def log_command_status(parent, command, status, res, time_taken,invoke_time):
+def log_command_status(parent, command, status, res, time_taken, invoke_time):
     global missing_critical_info
     log = open("/tmp/status-log-" + file_name, 'a')
 
@@ -343,7 +343,7 @@ def log(f):
         time_taken = '{0:.3f}'.format((time2-time1))
         invoked_command = args[0]
         parent = inspect.stack()[1][3] # parent function who called the command
-        log_command_status(parent, invoked_command, st,res ,time_taken,invoke_time)
+        log_command_status(parent, invoked_command, st,res ,time_taken, invoke_time)
         return ret
     return wrap
 
@@ -387,13 +387,14 @@ def signal_handler(signal, frame):
         # Remove tar out file
         no_log_status_output("rm -rf " + path + file_name + ".tgz")
         #invoke_command(['rm', '-rf', path+file_name+".tgz"])
-        remove_unwanted_files()
+    remove_unwanted_files()
     if driver_required_loading:
         os.system('mst stop > /dev/null 2>&1')
     print("\nRunning sysinfo-snapshot was halted!\nNo out directories/files.\nNo changes in modules loading states.")
-    sys.exit(0)
+    os._exit(0)
 
-
+signal.signal(signal.SIGTSTP, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
 
 ##########################################################
@@ -441,7 +442,7 @@ else:
             blueos_flag = True
     elif ("suse" in o_systems):
         cur_os = "suse"
-    elif ( ("ubuntu" in o_systems) or ("debian" in o_systems) ):
+    elif ( ("ubuntu" in o_systems) or ("debian" in o_systems) or ("uos" in o_systems)):
         cur_os = "debian"
     else:
         print("Unable to distinguish operating system.")
@@ -840,7 +841,6 @@ def ethtool_all_interfaces_handler():
     version = ethtool_version.split()[2]
     if (LooseVersion(version) < LooseVersion('4.7')):
         ethtool_version = "Warning - " + ethtool_version + ", it is older than 4.7 ! \nIt will not show the 25g generation speeds correctly, cause ethtool 4.6 and below do not support it." 
-
     res += ethtool_version
     options = ["", "-i", "-g", "-a", "-k", "-c", "-T", "--show-priv-flags", "-n", "-l", "-x"]
     for interface in mellanox_net_devices:
@@ -853,11 +853,18 @@ def ethtool_all_interfaces_handler():
             else:
                 res += "Could not run command: ethtool " + option + " " + interface
             res += "\n____________\n\n"
+    res += ethtool_S_output(mellanox_net_devices)
+    return res
 
+#**********************************************************
+#       Split ethtool -S output from all ethtool outputs section
+def ethtool_S_output(mellanox_net_devices):
+    res = "ethtool -S output:"
+    for interface in mellanox_net_devices:
+        res += "\n\n"
         st, ethtool_interface = get_status_output(ethtool_command + " " + " -S " + interface)
         if (st != 0):
             ethtool_interface = "Could not run command: ethtool -S " + interface
-
         filtered_interface_name = interface.replace(":", "").replace(".", "")
         file = open(path + file_name + "/ethtool_S/ethtool_S_" + filtered_interface_name, 'w')
         file.write(ethtool_interface)
@@ -865,9 +872,7 @@ def ethtool_all_interfaces_handler():
         res += "ethtool -S " + interface + "\n"
         res += "<td><a href=ethtool_S/ethtool_S_" + filtered_interface_name + ">ethtool -S " + interface + "</a></td>"
         res += "\n\n--------------------------------------------------"
-
     return res
-
 #**********************************************************
 #        modinfo Handler
 
@@ -1004,17 +1009,27 @@ def cma_roce_handler(func):
         first = False
     return res
 
+#**********************************************************
+#        mlxdump Handler Helper Function
+def is_mft_installed():
+    mft_installed = True
+    mft_message = "MFT is installed"
+    if not is_MFT_installed:
+        mft_installed = False
+        if non_root:
+            mft_message =  "Running as a non-root user - You must be root to use mst tool"
+        else:
+            mft_message =  "MFT is not installed, please install MFT and try again."
+    return mft_installed, mft_message
 
 #**********************************************************
 #        mlxdump Handler
-
 def mlxdump_handler():
-    if not is_MFT_installed:
-        return "MFT is not installed, please install MFT and try again."
-
+    mft_installed, mft_message = is_mft_installed()
+    if not mft_installed:
+        return mft_message
     if (len(pci_devices) < 1):
         return "There are no devices"
-
     options = ["fsdump"]
     temp = '_run_'
     for pci_device in pci_devices:
@@ -1043,48 +1058,68 @@ def add_mlxdump_links():
 def asap_handler():
     result = []
     is_all_failed = True
-    with open(path + file_name + "/asap/ovs_dpctl_dump_flows", "w+") as outF:
-        outF.write("ovs-dpctl dump-flows -m\n")
-        st, res = get_status_output("ovs-dpctl dump-flows -m >> " + path + file_name + "/asap/ovs_dpctl_dump_flows", '300s')
-        if st != 0:
-            outF.write("Could not run: ovs-dpctl dump-flows -m")
-        else:
-            is_all_failed = False
-    result.append("<td><a href=asap/ovs_dpctl_dump_flows> ovs_dpctl_dump_flows </a></td>")
+    try:
+        with open(path + file_name + "/asap/ovs_dpctl_dump_flows", "w+") as outF:
+            outF.write("ovs-dpctl dump-flows -m\n")
+            st, res = get_status_output("ovs-dpctl dump-flows -m >> " + path + file_name + "/asap/ovs_dpctl_dump_flows", '300s')
+            if st != 0:
+                outF.write("Could not run: ovs-dpctl dump-flows -m")
+            else:
+                is_all_failed = False
+        result.append("<td><a href=asap/ovs_dpctl_dump_flows> ovs_dpctl_dump_flows </a></td>")
+    except:
+        err = "Could not open the file: " + file_name + "/asap/ovs_dpctl_dump_flows."
+        running_warnings.append(err)
+    try:
+        with open(path + file_name + "/asap/tc_qdisc_show", "w+") as outF:
+            outF.write("tc qdisc show\n")
+            st, res = get_status_output("tc qdisc show >> " + path + file_name + "/asap/tc_qdisc_show", '300s')
+            if st != 0:
+                outF.write("Could not run: ovs-dpctl tc qdisc show")
+            else:
+                is_all_failed = False
+        result.append("<td><a href=asap/tc_qdisc_show> tc_qdisc_show </a></td>")
+    except:
+        err = "Could not open the file: " + file_name + "/asap/tc_qdisc_show."
+        running_warnings.append(err)
 
-    with open(path + file_name + "/asap/tc_qdisc_show", "w+") as outF:
-        outF.write("tc qdisc show\n")
-        st, res = get_status_output("tc qdisc show >> " + path + file_name + "/asap/tc_qdisc_show", '300s')
-        if st != 0:
-            outF.write("Could not run: ovs-dpctl tc qdisc show")
-        else:
-            is_all_failed = False
-    result.append("<td><a href=asap/tc_qdisc_show> tc_qdisc_show </a></td>")
+    try:
+        with open(path + file_name + "/asap/ovs-vsctl_get_Open_vSwitch", "w+") as outF:
+            outF.write("ovs-vsctl get Open_vSwitch . other_config\n")
+            st, res = get_status_output("ovs-vsctl get Open_vSwitch . other_config >> " + path + file_name + "/asap/ovs-vsctl_get_Open_vSwitch", '300s')
+            if st != 0:
+                outF.write("Could not run: ovs-vsctl get Open_vSwitch . other_config")
+            else:
+                is_all_failed = False
+        result.append("<td><a href=asap/ovs-vsctl_get_Open_vSwitch> ovs-vsctl get Open_vSwitch </a></td>")
+    except:
+        err = "Could not open the file: " + file_name + "/asap/ovs-vsctl_get_Open_vSwitch."
+        running_warnings.append(err)
 
-    with open(path + file_name + "/asap/ovs-vsctl_get_Open_vSwitch", "w+") as outF:
-        outF.write("ovs-vsctl get Open_vSwitch . other_config\n")
-        st, res = get_status_output("ovs-vsctl get Open_vSwitch . other_config >> " + path + file_name + "/asap/ovs-vsctl_get_Open_vSwitch", '300s')
-        if st != 0:
-            outF.write("Could not run: ovs-vsctl get Open_vSwitch . other_config")
-        else:
-            is_all_failed = False
-    result.append("<td><a href=asap/ovs-vsctl_get_Open_vSwitch> ovs-vsctl get Open_vSwitch </a></td>")
 
     st, output = get_status_output("ovs-vsctl show | grep Bridge | awk '{$1=$1};1' | cut -d' ' -f 2", '300s')
     if "command not found" in str(output) or st!= 0:
-        with open(path + file_name + "/asap/ovs_dpctl_dump_flows_bridges", "a+") as outF:
-            outF.write("Could not run:ovs-vsctl show | grep Bridge | awk '{$1=$1};1' | cut -d' ' -f 2")
+        try:
+            with open(path + file_name + "/asap/ovs_dpctl_dump_flows_bridges", "a+") as outF:
+                outF.write("Could not run:ovs-vsctl show | grep Bridge | awk '{$1=$1};1' | cut -d' ' -f 2")
+        except:
+            err = "Could not open the file: " + file_name + "/asap/ovs_dpctl_dump_flows_bridges."
+            running_warnings.append(err)
     else:
         for row in output.split('\n'):
             if 'b' in row:
                 cmd = "ovs-ofctl dump-flows " + row
-                with open(path + file_name + "/asap/ovs_dpctl_dump_flows_bridges", "a+") as outF:
-                    outF.write(cmd)
-                    st, res = get_status_output(cmd  + " >> " + path + file_name + "/asap/ovs_dpctl_dump_flows_bridges", '300s')
-                    if st != 0:
-                        outF.write("Could not run: ovs-dpctl dump-flows")
-                    else:
-                        is_all_failed = False
+                try:
+                    with open(path + file_name + "/asap/ovs_dpctl_dump_flows_bridges", "a+") as outF:
+                        outF.write(cmd)
+                        st, res = get_status_output(cmd  + " >> " + path + file_name + "/asap/ovs_dpctl_dump_flows_bridges", '300s')
+                        if st != 0:
+                            outF.write("Could not run: ovs-dpctl dump-flows")
+                        else:
+                            is_all_failed = False
+                except:
+                    err = "Could not open the file: " + file_name + "/asap/ovs_dpctl_dump_flows_bridges."
+                    running_warnings.append(err)
     result.append("<td><a href=asap/ovs_dpctl_dump_flows_bridges> ovs_dpctl_dump_flows_bridges </a></td>")
     if is_all_failed :
         err = "--asap flag was provided but all asap commands failed."
@@ -1101,14 +1136,18 @@ def asap_tc_handler():
     is_all_failed = True
     for interface in asap_devices:
         cmd =  "tc -s filter show dev " + interface + " ingress "
-        with open(path + file_name + "/asap_tc/ovs_tc_filter_" + interface, "a+") as outF:
-            outF.write(cmd)
-            st, res = get_status_output(cmd + " >> " + path + file_name + "/asap_tc/ovs_tc_filter_" + interface, '300s')
-            if st != 0:
-                outF.write("Could not run: " + cmd)
-            else:
-                is_all_failed = False
-        result.append("<td><a href=asap_tc/ovs_tc_filter_" + interface + "> ovs_tc_filter_" + interface + " </a></td>")
+        try:
+            with open(path + file_name + "/asap_tc/ovs_tc_filter_" + interface, "a+") as outF:
+                outF.write(cmd)
+                st, res = get_status_output(cmd + " >> " + path + file_name + "/asap_tc/ovs_tc_filter_" + interface, '300s')
+                if st != 0:
+                    outF.write("Could not run: " + cmd)
+                else:
+                    is_all_failed = False
+            result.append("<td><a href=asap_tc/ovs_tc_filter_" + interface + "> ovs_tc_filter_" + interface + " </a></td>")
+        except:
+            err = "Could not open the file: " + file_name + "/asap/ovs_tc_filter_."
+            running_warnings.append(err)
     if is_all_failed :
         err = "--asap_tc flag was provided but all asap tc filter commands failed. "
         running_warnings.append(err)
@@ -1173,11 +1212,10 @@ def ibdev2pcidev_handler():
 
 #**********************************************************
 #        fwtrace Handlers
-
 def fwtrace_handler():
-    if not is_MFT_installed:
-        return "MFT is not installed, please install MFT and try again."
-
+    mft_installed, mft_message = is_mft_installed()
+    if not mft_installed:
+        return mft_message
     if (len(pci_devices) < 1):
         return "There are no devices"
 
@@ -1226,7 +1264,7 @@ def mlxcables_options_handler():
         return 1, 'Error running mlxcables - no MST devices were found!'
     if not mlxcables:
         res += "No cables found"
-    options = ["--DDM", "--read_all_regs"]
+    options = ["--DDM", "--dump"]
     for mlxcable in mlxcables:
         if res != '':
             res += '\n\n---------------------------------------------------------------\n\n'
@@ -1241,8 +1279,12 @@ def mlxcables_options_handler():
             res += res_mlxcable_option
             flag = 1
     if os.path.isdir(path + file_name + "/cables"):
-        with open(path + file_name + "/cables/mlxcables_options_output","w+") as f:
-            f.write(res)
+        try:
+            with open(path + file_name + "/cables/mlxcables_options_output","w+") as f:
+                f.write(res)
+        except:
+            res_mlxcable_option = "Could not open the file: " + file_name + "/cables/mlxcables_options_output"
+            res += res_mlxcable_option
     else:
         return 1, "Error generating mlxcables output - unable to make directory: /cables"
     return 0, res
@@ -1322,11 +1364,34 @@ def lspci_vv_handler():
     return(result)
 
 #**********************************************************
-#        mst command -d <device> Handlers
+#        Helper for mstcommand_d_handler - handles commands with given number of runs
+def command_with_number_of_runs(number_of_runs, device, command, suffix, pcie_debug, pci_device=False):
+    no_log_status_output("mkdir " + path + file_name + "/amber_info")
+    command_result =""
+    for i in range(0, number_of_runs):
+        if "--amber_collect" in suffix :
+            if pci_device:
+                suffix = " --amber_collect "  + path + file_name +"/amber_info/amber_collect_" + str(i+1) + "_" + str(device) + ".csv --port_type PCIE"
+            else:
+                suffix = " --amber_collect "  + path + file_name +"/amber_info/amber_collect_" + str(i+1) + "_" + str(device) + ".csv"
+        command_result += "\n#" + str(i+1) + " " + command + " -d " + device + suffix + "\n\n"
+        mlx_st, command_result_device = get_status_output(command + " -d " + device + suffix, "30s")
+        if pcie_debug:
+            output = command + "_" + device + "_run_" + str(i + 1)
+            filtered_file_name = output.replace(":", "").replace(".", "")
+            save_mlxlink_output_to_file(filtered_file_name,command_result_device)
+        command_result_device = command_result_device.replace("[31m","").replace("[32m","").replace("[33m","").replace("[0m","")
+        if (mlx_st != 0):
+            command_result_device = "Errors detected while running: " + command + " -d " + device + suffix + '"\n' + command_result_device
+        command_result += command_result_device
+    return command_result
 
+#**********************************************************
+#        mst command -d <device> Handlers
 def mstcommand_d_handler(command,pcie_debug = False):
+    mft_installed, mft_message = is_mft_installed()
     if (command == 'mlxlink / mstlink'):
-        if is_MFT_installed:
+        if mft_installed:
             st, mlxlink_test = get_status_output('man mlxlink') # If MFT is installed but it is an old version that does NOT include Mlxlink
             if st == 0:
                 command = 'mlxlink'
@@ -1340,16 +1405,15 @@ def mstcommand_d_handler(command,pcie_debug = False):
             else:
                 return "MFT and MST are not installed - could not run mlxlink / mstlink"
     else:
-        if not is_MFT_installed:
-            return "MFT is not installed, please install MFT and try again."
-
+        if not mft_installed:
+            return mft_message
     if (len(pci_devices) < 1):
         return "There are no devices"
     suffix_list = []
     if command == "mlxconfig":
         suffix_list.append(" -e q")
     elif command == "mlxlink" or command == "mstlink":
-        suffix_list = [" -m", " -e", " -c", " --show_fec", " --port_type PCIE -c -e"]
+        suffix_list = [" -m", " -e", " -c", " --show_fec", " --port_type PCIE -c -e"," --rx_fec_histogram --show_histogram"," --cable --ddm"," --cable --dump","--amber_collect"]
     else:
         suffix_list.append(" ")
 
@@ -1361,9 +1425,19 @@ def mstcommand_d_handler(command,pcie_debug = False):
         mst_status_rs, mst_status_output = get_status_output("mst status -v")
     else:
         mst_status_rs, mst_status_output = get_status_output("mst status")
+     # --amber_collect
+    number_of_runs = 3
+    # network ports
+    suffix = "--amber_collect"
+    for local_mst_device in local_mst_devices:
+        command_result+= command_with_number_of_runs(number_of_runs,local_mst_device,command, suffix,pcie_debug)
+    if mtusb_flag:
+        for mtusb_device in mtusb_devices:
+            command_result+= command_with_number_of_runs(number_of_runs,mtusb_device,command, suffix,pcie_debug)
+    # PCIe ports
     for pci_device in pci_devices:
         device = pci_device["device"]
-        if is_MFT_installed:
+        if mft_installed:
             if device  not in mst_status_output:
                 continue
         elif is_MST_installed:
@@ -1377,19 +1451,10 @@ def mstcommand_d_handler(command,pcie_debug = False):
             number_of_runs = 1
             if (command_result != ""):
                 command_result += "\n\n-------------------------------------------------------------\n\n"
-            if "--port_type PCIE -c -e" in suffix:
+            if "--port_type PCIE -c -e" or "--amber_collect" in suffix :
                 number_of_runs = 3
-            for i in range(0, number_of_runs):
-                command_result += "\n#" + str(i+1) + " " + command + " -d " + device + suffix + "\n\n"
-                mlx_st, command_result_device = get_status_output(command + " -d " + device + suffix)
-                if pcie_debug:
-                    output = command + "_" + device + "_run_" + str(i + 1)
-                    filtered_file_name = output.replace(":", "").replace(".", "")
-                    save_mlxlink_output_to_file(filtered_file_name,command_result_device)
-                command_result_device = command_result_device.replace("[31m","").replace("[32m","").replace("[33m","").replace("[0m","")
-                if (mlx_st != 0):
-                    command_result_device = "Errors detected while running: " + command + " -d " + device + suffix + '"\n' + command_result_device
-                command_result += command_result_device
+            # PCIe ports
+            command_result+=command_with_number_of_runs(number_of_runs,device,command, suffix, pcie_debug, True)
     if not command_result:
         command_result = "No devices found for " + command
     return command_result
@@ -1427,7 +1492,7 @@ def general_fw_command_output(command, card, timeout = '80s'):
         if (not is_MFT_installed and not is_MST_installed):
             return(1, fwflint_error, tool_error)
         if command == 'fwflint_q':
-            flint_flags = ' q'
+            flint_flags = ' q full'
         else:
             flint_flags = ' dc'
         st, fw_query = get_status_output(commands_dict["fwflint"][0] + flint_flags, timeout)
@@ -1751,15 +1816,18 @@ def show_irq_affinity_all_handler():
     for interface in net_devices:
         if (interface == "lo" or interface == "bonding_masters"):
             continue
-        with open(path + file_name + "/show_irq_affinity_all/" + interface, "w+") as outF:
-            outF.write("show_irq_affinity.sh " + interface + "\n")
-            st, show_irq_affinity = get_status_output("show_irq_affinity.sh " + interface + " 2>/dev/null")
+        try:
+            with open(path + file_name + "/show_irq_affinity_all/" + interface, "w+") as outF:
+                outF.write("show_irq_affinity.sh " + interface + "\n")
+                st, show_irq_affinity = get_status_output("show_irq_affinity.sh " + interface + " 2>/dev/null")
 
-            if (st == 0 and show_irq_affinity != ""):
-                outF.write(show_irq_affinity)
-            else:
-                outF.write("Interface " + interface + " does not exist")
-        res.append("<td><a href=show_irq_affinity_all/" + interface + "> show_irq_affinity.sh " + interface + "</a></td>")
+                if (st == 0 and show_irq_affinity != ""):
+                    outF.write(show_irq_affinity)
+                else:
+                    outF.write("Interface " + interface + " does not exist")
+            res.append("<td><a href=show_irq_affinity_all/" + interface + "> show_irq_affinity.sh " + interface + "</a></td>")
+        except:
+            outF.write("Could not open the file: " + file_name + "/show_irq_affinity_all/" + interface)
     return 0,res
 
 #**********************************************************
@@ -1777,13 +1845,17 @@ def network_manager_system_connections_handler():
     no_log_status_output("mkdir " + path + file_name + "/networkManager_system_connections")
     res = []
     for connection in system_connections:
-        with open(path + file_name + "/networkManager_system_connections/" + connection, "w+") as outF:
-            st, content = get_status_output("cat /etc/NetworkManager/system-connections/" + connection )
-            if(st == 0 and content != ""):
-                outF.write(content)
-            else:
-                outF.write("system connection " + connection + " does not exist")
-        res.append("<td><a href=networkManager_system_connections/" + connection + "> /etc/NetworkManager/system-connections/" + connection + "</a></td>")
+        try:
+            with open(path + file_name + "/networkManager_system_connections/" + connection, "w+") as outF:
+                st, content = get_status_output("cat /etc/NetworkManager/system-connections/" + connection )
+                if(st == 0 and content != ""):
+                    outF.write(content)
+                else:
+                    outF.write("system connection " + connection + " does not exist")
+            res.append("<td><a href=networkManager_system_connections/" + connection + "> /etc/NetworkManager/system-connections/" + connection + "</a></td>")
+        except:
+            outF.write("Could not open the file: " + file_name + "/networkManager_system_connections/" + connection)
+
     return 0,res
 
 
@@ -1938,16 +2010,22 @@ def ecn_configuration_handler():
     if os.path.exists("/sys/class/net"):
         for indir in os.listdir("/sys/class/net/"):
             if( os.path.exists("/sys/class/net/" + indir + "/ecn")):
+                # fillter indir cause this is the part in the path of the ECN output
+                # the file_name is the "sysinfo-snapshot-v" + version + "-"
+                filtered_indir =  filter_file_name(indir)
                 if(not os.path.exists(path + file_name + "/ecn/")):
                     no_log_status_output("mkdir " + path + file_name + "/ecn" )
                 if(not os.path.exists(path + file_name + "/ecn/config")):
                     no_log_status_output("mkdir " + path + file_name + "/ecn/config" )
                 for root, dirs, files in os.walk("/sys/class/net/" + indir + "/ecn"):
-                    with open(path + file_name + "/ecn/config/" + indir, "a+") as outF:
-                        for file in files:
-                            outF.write( os.path.join(root,file) + "= ")
-                            outF.write(get_file_content( os.path.join(root,file))+ "\n\n")
-                res.append("<td><a href='ecn/config/" + indir + "'> " + indir + " </a></td>")
+                    try:
+                        with open(path + file_name + "/ecn/config/" + filtered_indir, "a+") as outF:
+                            for file in files:
+                                outF.write( os.path.join(root,file) + "= ")
+                                outF.write(get_file_content( os.path.join(root,file))+ "\n\n")
+                    except:
+                        outF.write("Could not open the file: " + file_name + "/ecn/config/" + filtered_indir)
+                res.append("<td><a href='ecn/config/" + filtered_indir + "'> " + filtered_indir + " </a></td>")
     else:
         return 1, "/sys/class/net dose not exist"
     if res:
@@ -1968,10 +2046,14 @@ def congestion_control_parameters_handler():
                     no_log_status_output("mkdir " + path + file_name + "/ecn/debug" )
                 for root, dirs, files in os.walk("/sys/kernel/debug/mlx5/" + indir + "/cc_params"):
                     filename = indir.replace(":","_")
-                    with open(path + file_name + "/ecn/debug/" + filename, "a+") as outF:
-                        for file in files:
-                            outF.write( os.path.join(root,file) + "= ")
-                            outF.write(get_file_content( os.path.join(root,file))+ "\n\n")
+                    try:
+                        with open(path + file_name + "/ecn/debug/" + filename, "a+") as outF:
+                            for file in files:
+                                outF.write( os.path.join(root,file) + "= ")
+                                outF.write(get_file_content( os.path.join(root,file))+ "\n\n")
+                    except:
+                        outF.write("Could not open the file: " + file_name + "/ecn/debug/" + filename)
+
                 res.append("<td><a href='ecn/debug/" + filename + "'> " + indir + " </a></td>")
     else:
         return 1, "/sys/kernel/debug/mlx5 dose not exist"
@@ -1979,6 +2061,23 @@ def congestion_control_parameters_handler():
         return 0, res
     else:
         return 1, "/sys/kernel/debug/mlx5 No pci found"
+
+# *******************************************************************
+#            nvsm dump health handler
+def nvsm_dump_health_handler():
+    res = ""
+    res +=  "nvsm dump health \n\n"
+    # the result of the command is a tar archive maybe have to use tar commad annd append the archive contant as href
+    st,result = get_status_output("nvsm dump health -tfp " + path + file_name, "6m")
+    if st != 0:
+        if "command not found" in result:
+            return 1, "Could not run the command, nvsm tool is not installed"
+        res += "Could not run the command - nvsm dump health\n\n" + result
+    else:
+        res += "Produced a health report as .tar archive in the given path " + path
+    res += "---------------------------------------------------------\n\n"
+    return st, res
+
 # *******************************************************************
 #            mlxreg <mst_device> handler
 def mlxreg_handler():
@@ -2068,10 +2167,15 @@ def roce_counters_handler():
 
     ib_devices = ib_devices.splitlines()
     for ib_device in ib_devices:
+        st, ib_device_hw_counter_files = get_status_output("ls /sys/class/infiniband/"+ ib_device +"/hw_counters")
+        if st == 0:
+            ib_device_hw_counter_files = ib_device_hw_counter_files.splitlines()
+            for ib_device_hw_counter_file in ib_device_hw_counter_files:
+                file_content = get_file_content("/sys/class/infiniband/"+ ib_device  +"/hw_counters/"+ ib_device_hw_counter_file +"")
+                roce_hw_counters += "/sys/class/infiniband/"+ ib_device +"/hw_counters/"+ ib_device_hw_counter_file +"" + ': ' + file_content + '\n'
         st, ports = get_status_output("ls /sys/class/infiniband/"+ ib_device +"/ports")
         if st != 0:
             return 1, "Couldn't get RoCE Counters - /sys/class/infiniband/"+ ib_device +"/ports does not exist."
-
         ports = ports.splitlines()
         for port in ports:
             st, hw_counter_files = get_status_output("ls /sys/class/infiniband/"+ ib_device +"/ports/"+ port +"/hw_counters")
@@ -2082,16 +2186,13 @@ def roce_counters_handler():
                 for hw_counter_file in hw_counter_files:
                     file_content = get_file_content("/sys/class/infiniband/"+ ib_device +"/ports/"+ port +"/hw_counters/"+ hw_counter_file +"")
                     roce_hw_counters += "/sys/class/infiniband/"+ ib_device +"/ports/"+ port +"/hw_counters/"+ hw_counter_file +"" + ': ' + file_content + '\n'
-
             st, counters_files = get_status_output("ls /sys/class/infiniband/"+ ib_device +"/ports/"+ port +"/counters")
             if st != 0:
                 roce_counters += "RoCE Counters for "+ ib_device +" port: "+ port + " do not exist.\n"
-
             counters_files = counters_files.splitlines()
             for counters_file in counters_files:
                 file_content = get_file_content("/sys/class/infiniband/"+ ib_device +"/ports/"+ port +"/counters/"+ counters_file +"")
                 roce_counters += "/sys/class/infiniband/"+ ib_device +"/ports/"+ port +"/counters/"+ counters_file +"" + ': ' + file_content + '\n'
-
     final_output += "HW Counters: \n\n" + roce_hw_counters + "\n\n\nCounters: \n\n" + roce_counters
     return 0, final_output
 
@@ -2335,6 +2436,13 @@ def add_command_if_exists(command):
             print_err_flag = 1
     elif "congestion_control_parameters" == command:
         status, result = congestion_control_parameters_handler()
+        if(status == 0):
+            print_err_flag = 0
+            command_is_string = False
+        else:
+            print_err_flag = 1
+    elif nvsm_dump_flag and "nvsm dump health" == command:
+        status, result = nvsm_dump_health_handler()
         if(status == 0):
             print_err_flag = 0
             command_is_string = False
@@ -3050,7 +3158,7 @@ def add_internal_file_if_exists(file_full_path):
 # command_output - is the content of the out_file_name
 
 def add_ext_file_handler(field_name, out_file_name, command_output):
-    external_command = ["pcie_debug_dict","sysctl -a","ps -eLo","chkconfig","ucx_info -f","ucx_info -c","numa_node","netstat -anp","lstopo-no-graphics","lstopo-no-graphics -v -c","mlnx_tune -r","zoneinfo","other_system_files","interrupts"]
+    external_command = ["pcie_debug_dict","sysctl -a","ps -eLo","chkconfig","ucx_info -f","ucx_info -c","numa_node","netstat -anp","lstopo-no-graphics","lstopo-no-graphics -v -c","mlnx_tune -r -i " + path + file_name,"zoneinfo","other_system_files","interrupts"]
     forbidden_chars = re.compile('([\/:*?"<||-])')
     out_file_name = forbidden_chars.sub(r'', out_file_name).replace("\\", "") # clean the file name
     out_file_name = out_file_name.replace(" ","_")
@@ -3102,12 +3210,20 @@ def add_external_file_if_exists(field_name, curr_path):
             else:
                 err_flag = 1
                 err_command += "cat " + curr_path
-    elif (field_name == "mlxcables --DDM/--read_all_regs"):
-        if is_command_allowed("mlxcables --DDM/--read_all_regs"):
+    elif (field_name == "trace"):
+        if is_command_allowed("file :" + curr_path):
+            status, command_output = get_status_output("cat " + curr_path)
+            if (status == 0):
+                    add_ext_file_handler("analyze_fw_trace_file", field_name, command_output)
+            else:
+                err_flag = 1
+                err_command += "cat " + curr_path
+    elif (field_name == "mlxcables --DDM/--dump"):
+        if is_command_allowed("mlxcables --DDM/--dump"):
             st, command_output = mlxcables_options_handler()
             if st != 0:
                 err_flag = 1
-                err_command += "mlxcables --DDM/--read_all_regs"
+                err_command += "mlxcables --DDM/--dump"
             else:
                 external_files_dict[field_name] = "<td><a href=" + curr_path + ">" + field_name + "</a></td>"
                 available_external_files_collection.append([field_name, curr_path])
@@ -3254,15 +3370,19 @@ def add_external_file_if_exists(field_name, curr_path):
             if st == 0:
                 command_output = ""
                 for numa in numas.splitlines():
-                    with open(numa, 'r') as numa_file:
-                        command_output += numa + " " + numa_file.read().strip() + "\n"
+                    try:
+                        with open(numa, 'r') as numa_file:
+                            command_output += numa + " " + numa_file.read().strip() + "\n"
+                    except:
+                        err_flag = 1
+                        err_command += "No file " + numa
                 add_ext_file_handler(field_name, field_name, command_output)
             else:
                 err_flag = 1
                 err_command += "find /sys | grep numa_node | grep -v uevent |sort"
     elif ("mlnx_tune" in field_name):
         if is_command_allowed("mlnx_tune","no_ib"):
-            status, command_output = get_status_output("./mlnx_tune -r", "1m")
+            status, command_output = get_status_output("./mlnx_tune -r -i " + path + file_name, "1m")
             if not (("No such file or directory" in command_output) or ((status != 0) and not ("Unsupported" in command_output))):
                 add_ext_file_handler(field_name, curr_path, command_output)
             else:
@@ -3869,22 +3989,25 @@ def show_error_message(err_msg):
 ###########################################################
 ############## Main Function's Handlers ###################
 
+def remove_unwanted_temp_files(file):
+    if (file.startswith("tmp.") or file.startswith("hsqldb.")):
+        os.remove( path + file)
+
 # Remove all unwanted side effect files and folders
 def remove_unwanted_files():
     # Remove mstflint_lockfiles directory
     no_log_status_output("rm -rf /tmp/mstflint_lockfiles")
-    #invoke_command(['rm', '-rf', "/tmp/mstflint_lockfiles"])
-
-    # Remove untared directory out file
-    no_log_status_output("rm -rf " + path + file_name)
-    #invoke_command(['rm', '-rf', path+file_name])
-
     # Remove all unwanted side effect files
-    if (os.path.exists(path) == True):
+    if (path != "/tmp/" and os.path.exists(path) == True):
         for file in os.listdir(path):
-            if (file.startswith("tmp.") or file.startswith("hsqldb.")):
-                get_status_output("rm -rf " + path + file)
-                #invoke_command(['rm', '-rf', path+file])
+            remove_unwanted_temp_files(file)
+    for tmp_file_name in os.listdir('/tmp/'):
+        if(re.search("^status-log-.*" + file_name + "$", tmp_file_name)):
+            os.remove("/tmp/" + tmp_file_name)
+        remove_unwanted_temp_files(tmp_file_name)
+    # Remove untared directory out file
+    shutil.rmtree( path + file_name)
+
 
 def validate_not_file():
     # validate the path is not file elsewise print proper message and exit
@@ -4486,6 +4609,11 @@ def initialize_html(html_flag):
     html.write("<a name=" + '"' + "index" + '"' + "></a><h2>Version: " + version + "</h2>")
     html.write("<br/><hr/>")
 
+    # WARNIGS section
+    if(non_root):
+        html.write("<p><font color="+'"'+"red"+'"'+" size="+'"'+"3"+'"'+">Warning: Running as non root user, commands/files that require root permissions are missing. (--non_root flag was provided)</font></p>")
+
+
     # Add firmware and I2C alerts status
     if no_fw_flag == True:
         html.write("<p><font color="+'"'+"orange"+'"'+" size="+'"'+"3"+'"'+">Alert: Firmware commands are NOT included. (--no_fw flag was provided)</font></p>")
@@ -4655,9 +4783,13 @@ def html_write_paragraph(html, base, collection, dict, prev_parag_end):
                         content_final += line + "\n"
                 html.write(content_final)
             elif ( collection[i] in array_output_links_collection ):
-                for value in server_commands_dict[collection[i]]:
-                    html.write(value)
+                if("mst_commands_query_output" in collection[i] and non_root):
+                    html.write("Running as a non-root user - You must be root to use mst tool")
                     html.write("&nbsp;&nbsp;&nbsp;&nbsp;")
+                else:
+                    for value in server_commands_dict[collection[i]]:
+                        html.write(value)
+                        html.write("&nbsp;&nbsp;&nbsp;&nbsp;")
             else:
                 if(server_commands_dict[collection[i]]):
                     for value in server_commands_dict[collection[i]]:
@@ -5132,15 +5264,12 @@ def confirm_mlnx_cards():
 
 # Create empty log files
 def create_empty_log_files():
-    f = open(path + file_name + "/err_messages/dummy_functions", 'a')
-    f.close()
-
-    f = open(path + file_name + "/err_messages/dummy_paths", 'a')
-    f.close()
-
-    f = open(path + file_name + "/err_messages/dummy_external_paths", 'a')
-    f.close()
-
+        f = open(path + file_name + "/err_messages/dummy_functions", 'a')
+        f.close()
+        f = open(path + file_name + "/err_messages/dummy_paths", 'a')
+        f.close()
+        f = open(path + file_name + "/err_messages/dummy_external_paths", 'a')
+        f.close()
 
 # Load module if needed and save old mst status
 def load_modules():
@@ -5152,7 +5281,10 @@ def load_modules():
 
     st, mst_start = get_status_output('mst start')
     if st != 0:
-        print ('MFT is not installed.')
+        if non_root:
+            print("Running as a non-root user - You must be root to use mst tool")
+        else:
+            print ('MST is not installed.')
         is_MFT_installed = False
     else:
         is_MFT_installed = True
@@ -5349,12 +5481,16 @@ def generate_output():
         print("\tGenerating JSON file has started")
     if (json_flag == True and json_found == True):
         json_content = json.dumps(l1_dict, sort_keys=True)
-        with open(path + file_name + "/" + file_name + ".json", 'w') as json_file:
-            json_file.write(json_content)
-        #print >> json_file, json_content
-        #json_file = open(path + file_name + "/" + file_name + ".json", 'w')
-        #print >> json_file, json_content
-        #json_file.close()
+        try:
+            with open(path + file_name + "/" + file_name + ".json", 'w') as json_file:
+                json_file.write(json_content)
+            #print >> json_file, json_content
+            #json_file = open(path + file_name + "/" + file_name + ".json", 'w')
+            #print >> json_file, json_content
+            #json_file.close()
+        except:
+            print("\tCould not open the file: " + file_name + "/" + file_name + ".json")
+
     elif (json_flag == True and not generate_config_flag):
         if verbose_flag:
             print("\t'json' module is not found in python, please install the module or remove the flag --json and try again.")
@@ -5445,7 +5581,8 @@ def update_flags(args):
     global config_dict
     global config_path
     global file_name
-
+    global non_root
+    global nvsm_dump_flag
     isFile = False
     if (args.config):
         config_file_flag = True
@@ -5480,6 +5617,10 @@ def update_flags(args):
                 html3_path = path + file_name + "/sr_iov.html"
             if (os.path.isfile(path[:-1]) == True):
                 isFile = True
+    if(args.non_root):
+        non_root = True
+    if(args.nvsm_dump):
+        nvsm_dump_flag =True
     if (args.no_fw):
         no_fw_flag = True
     if (args.fsdump):
@@ -5529,7 +5670,7 @@ def update_flags(args):
                     config_file.writeheader()
                 config_dict = {}
             except PermissionError:
-                print('Unable to create a configuration file due to pemissions, please make sure that you have the required acsses permission to the provided path .\n')
+                print('Unable to create a configuration file due to pemissions, please make sure that you have the required acsses permission to the provided path. The path must be full path, including file name .\n')
                 parser.print_help()
                 sys.exit(1)
             except:
@@ -5563,6 +5704,21 @@ def update_flags(args):
             pass
         fw_collection.extend(['mst_commands_query_output / i2c-mst_commands_query_output'])
 
+def confirm_root():
+    st, user = no_log_status_output('id -u')
+    if (st != 0):
+        print('Unable to distinguish user')
+        sys.exit(1)
+    if(user != '0'):
+        if(non_root):
+            print('Running as a non-root user. (--non_root flag was provided)\n')
+        else:
+            print('Running as a non-root user\nPlease switch to root user (super user) and run again.\n')
+            parser.print_help()
+            sys.exit(1)
+    elif(non_root):
+        print('Running as root user with a --non_root flag.\nPlease switch to non-root user or remove the --non_root flag.\n\nNote: the system will continue running as non-root.\n')
+
 def execute(args):
     global len_argv
     global csvfile
@@ -5570,22 +5726,13 @@ def execute(args):
     global config_dict
     global file_name
     update_flags(args)
+    confirm_root()
     file_name = get_json_file_name()
     if args.pcie_debug:
         print('Running sysinfo-snapshot to generate PCIE debug info.')
         generate_pcie_debug_info()
     else:
         generate_output()
-
-def confirm_root():
-    st, user = no_log_status_output('/usr/bin/whoami')
-    if (st != 0):
-        print('Unable to distinguish user')
-        sys.exit(1)
-    if (user.strip() != 'root'):
-        print('Running as a none root user\nPlease switch to root user (super user) and run again.\n')
-        parser.print_help()
-        sys.exit(1)
 
 def config_callback(option, opt_str, value, parser):
     assert value is None
@@ -5640,6 +5787,8 @@ def get_parsed_args():
                                                                                             + "In case a path is not provided, a default path is assumed, which is current directory with config.csv file name.")
         parser.add_option("--check_fw", help="check if the current adapter firmware is the latest version released, output in performance html file [Internet access is required]", action='store_true')
         parser.add_option("--verbose", help="first verbosity level, available if option is provided only once, lists sections in process.second verbosity level, available if option is provided twice, lists sections and commands in process.", action='count')
+        parser.add_option("--non_root", help=" Allow the tool to run as non_root.", action='store_true')
+        parser.add_argument("-t","--nvsm_dump" , help=" collect nvsm dump health.", action='store_true')
         (options, args)  = parser.parse_args()
 
         if (len(args) > 0) and ( not (options.dir) and not (options.config) and not (options.generate_config) ):
@@ -5676,6 +5825,8 @@ def get_parsed_args():
                                                                                             + "In case a path is not provided, a default path is assumed, which is current directory with config.csv file name.")
         parser.add_argument("--check_fw", help="check if the current adapter firmware is the latest version released, output in performance html file [Internet access is required]", action='store_true')
         parser.add_argument("--verbose", help="first verbosity level, available if option is provided only once, lists sections in process.second verbosity level, available if option is provided twice, lists sections and commands in process.", action='count')
+        parser.add_argument("--non_root", help=" allow the tool to run as non-root.", action='store_true')
+        parser.add_argument("-t","--nvsm_dump" ,help=" collect nvsm dump health.", action='store_true')
         args = parser.parse_args()
         return args
 
@@ -5686,7 +5837,6 @@ def main():
     if (parsed_args.version):
         print('Sysinfo-snapshot version: ' + version)
     else:
-        confirm_root()
         execute(parsed_args)
 
 if __name__ == '__main__':
