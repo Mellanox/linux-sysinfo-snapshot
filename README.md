@@ -6,7 +6,7 @@ Linux Sysinfo Snapshot
 Automated sysinfo-snapshot tool is designed to take a snapshot of all the configuration and relevant information on the server and Mellanox's adapters.
 
 2. Description
-The Sysinfo Snapshot is a python script that gathers system information and places it into a tar file.
+The Sysinfo Snapshot is a python script that gathers system information and places it into a compressed tar file.
 
 3. Script Expected Output:
 By default, the followings are the expected file output when running the script:
