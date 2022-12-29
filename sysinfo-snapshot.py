@@ -2574,7 +2574,7 @@ def add_command_if_exists(command):
         print_err_flag = 0
         # status, result = add_command_to_pcie_debug_dict(command)
         status, result = get_status_output(command)
-        add_output_to_pcie_folder("lspcu", result)
+        add_output_to_pcie_folder("lscpu", result)
     elif "uname" in command:
         status = 0
         result = ""
@@ -5345,7 +5345,7 @@ def generate_pcie_debug_info():
             # add_output_to_pcie_debug_dict("lspci -vv", result)
         elif "lscpu" in command:
             status, result = get_status_output(command)
-            add_output_to_pcie_folder("lspcu", result)
+            add_output_to_pcie_folder("lscpu", result)
         else:
             add_command_to_pcie_debug_dict(command)
     arrange_pcie_debugging_output()
@@ -5370,7 +5370,7 @@ def create_tar_file():
     # Arrange status log and copy it into the tar file
     arrange_command_status_log()
     try:
-        tar = tarfile.open(path + file_name + ".tgz", "w")
+        tar = tarfile.open(path + file_name + ".tgz", "w:gz")
         tar.add(path + file_name, arcname = file_name)
         tar.close()
     except :
