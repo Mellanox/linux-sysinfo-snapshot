@@ -696,7 +696,8 @@ def get_status_output(command, timeout='10s'):
             [command],
             shell=True,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT)
+            stderr=subprocess.STDOUT,
+            bufsize=1024*1024)
         stdout, stderr = p.communicate()
         return p.returncode, standarize_str(stdout)
     except BaseException:
