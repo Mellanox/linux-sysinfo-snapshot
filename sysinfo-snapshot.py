@@ -7380,14 +7380,13 @@ def confirm_mlnx_cards():
 
 # Create empty log files
 
-
-def create_empty_log_files():
-    f = open(path + file_name + "/err_messages/dummy_functions", 'a')
-    f.close()
-    f = open(path + file_name + "/err_messages/dummy_paths", 'a')
-    f.close()
-    f = open(path + file_name + "/err_messages/dummy_external_paths", 'a')
-    f.close()
+def create_empty_log_files(path, file_name):
+    file_paths = [f"{path}{file_name}/err_messages/dummy_functions",
+                  f"{path}{file_name}/err_messages/dummy_paths",
+                  f"{path}{file_name}/err_messages/dummy_external_paths"]
+    for file_path in file_paths:
+        with open(file_path, 'a'):
+            pass
 
 # Load module if needed and save old mst status
 
