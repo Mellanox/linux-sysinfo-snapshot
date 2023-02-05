@@ -625,36 +625,31 @@ def log_command_status(parent, command, status, res, time_taken, invoke_time):
 
 
 def arrange_command_status_log():
-    tmp_log = open("/tmp/status-log-" + file_name, 'r')
-    log_content = tmp_log.read()
-    tmp_log.close()
+    temp_log_path = "/tmp/status-log-" + file_name
+    with open(temp_log_path, 'r') as temp_log:
+        log_content = temp_log.read()
 
-    log = open(path + file_name + "/status-log-" + file_name, 'w')
-    if missing_critical_info:
-        log.write(
-            "\n\n" +
-            "Warning! The sysinfo-snapshot output failed to collect all essential information from the server.\n")
-        log.write("\nFailed critical debugging commands:\n")
-        for failed_command in critical_failed_commands:
-            log.write(failed_command + "\n")
-    if running_warnings:
+    with open(path + file_name + "/status-log-" + file_name, 'w') as log:
+        if missing_critical_info:
+            log.write("\n\nWarning! The sysinfo-snapshot output failed to collect all essential information from the server.\n")
+            log.write("\nFailed critical debugging commands:\n")
+            for failed_command in critical_failed_commands:
+                log.write(failed_command + "\n")
+        if running_warnings:
+            log.write("\n\n------------------------------------------------------------------------------------------------------------------\n")
+            log.write("\nRunning warnings:\n")
+            for warning in running_warnings:
+                log.write(warning + "\n")
         log.write("\n\n------------------------------------------------------------------------------------------------------------------\n")
-        log.write("\nRunning warnings:\n")
-        for warning in running_warnings:
-            log.write(warning + "\n")
-    log.write("\n\n------------------------------------------------------------------------------------------------------------------\n")
-    log.write("\nFull log:\n")
-    log.write(log_content)
-    log.close()
-
+        log.write("\nFull log:\n")
+        log.write(log_content)
+        
     # After moving status log inside the TGZ file, remove it from /tmp
     try:
-        os.remove("/tmp/status-log-" + file_name)
-    except BaseException:
-        with open("/tmp/status-log-" + file_name, 'a') as tmp_log:
-            tmp_log.write(
-                "\nError in removing status log from /tmp. Full path is: /tmp/status-log-" +
-                file_name)
+        os.remove(temp_log_path)
+    except BaseException as e:
+        with open(temp_log_path 'a') as temp_log:
+            temp_log.write(f"\nError in removing status log from /tmp. Full path is: {temp_log_path}\n{e}")
 
 
 # *****************************************************************************************************
