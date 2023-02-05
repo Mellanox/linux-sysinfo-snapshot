@@ -7478,15 +7478,14 @@ def generate_pcie_debug_info():
 
 def add_output_to_pcie_folder(file, output):
     """
-    Function that take specific output and write it to new file called file_name under pcie folder.
-    :param file_name:
-    :param output:
+    Function that takes specific output and writes it to a new file with name 'file' under the 'pcie_files' directory.
+    :param file: the name of the file to be written
+    :param output: the content to be written to the file
     :return: None
     """
     full_path = path + file_name + "/pcie_files/" + file
-    f = open(full_path, "w")
-    f.write(output)
-    f.close()
+    with open(full_path, "w") as f:
+        f.write(output)
 
 
 def create_tar_file():
