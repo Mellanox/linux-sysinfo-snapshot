@@ -48,11 +48,12 @@ DEFAULT_PATH = '/tmp/'
 
 def standarize_str(tmp):
     ''' if python version major is 3, then tmp is unicode (utf-8) byte string
-        and need to be converted to regular string
+        and need to be converted to regular string. We can test for this using 
+        the type function to check the type of the input
     '''
-    if sys.version_info[0] == 2:
+    if type(tmp) == str:
         return tmp.strip()
-    elif sys.version_info[0] == 3:
+    elif type(tmp) == bytes:
         return tmp.decode("utf-8", 'ignore').strip()
     else:
         return tmp.strip()
