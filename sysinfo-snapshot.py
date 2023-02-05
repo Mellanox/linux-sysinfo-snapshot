@@ -7492,19 +7492,13 @@ def add_output_to_pcie_folder(file, output):
 def create_tar_file():
     # Arrange status log and copy it into the tar file
     arrange_command_status_log()
-    try:
-        tar = tarfile.open(path + file_name + ".tgz", "w:gz")
-        tar.add(path + file_name, arcname=file_name)
-        tar.close()
-    except BaseException:
-        get_status_output(
-            'tar -zcvf ' +
-            path +
-            file_name +
-            ".tgz " +
-            path +
-            file_name,
-            "20s")
+
+    tar = tarfile.open(path + file_name + ".tgz", "w:gz")
+    tar.add(path + file_name, arcname=file_name)
+    tar.close()
+except Exception as e:
+    get_status_output('tar -zcvf ' + path + file_name + ".tgz " + path + file_name, "20s")
+    print(f"An error occurred creating the tar file: {e}")
 
 
 def generate_output():
