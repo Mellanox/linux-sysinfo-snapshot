@@ -583,47 +583,24 @@ supported_os_collection = ["redhat", "suse", "debian"]
 # A function to log every command invoked on the host: command, passed/filed, time taken
 # A critical command is a command which is used for PCIE debugging. Found
 # in PCIE_debugging_collection
-
-
 def log_command_status(parent, command, status, res, time_taken, invoke_time):
     global missing_critical_info
-    log = open("/tmp/status-log-" + file_name, 'a')
-
-    if status == 0:
-        log.write(
-            str(invoke_time) +
-            ":" +
-            command +
-            " ---- " +
-            "PASSED, time taken: " +
-            time_taken +
-            "\n")
-    else:
-        failed_reason = "FAILED"
-        if "not found" in res.lower() or "no such file or directory" in res.lower():
-            failed_reason = "NOT FOUND"
-        if parent in critical_collection:
-            if not missing_critical_info:
+    log_file = "/tmp/status-log-" + file_name
+    with open(log_file, 'a') as log:
+        status_message = "PASSED, time taken: {}".format(time_taken)
+        if status != 0:
+            failed_reason = "NOT FOUND" if "not found" in res.lower() or "no such file or directory" in res.lower() else "FAILED"
+            status_message = "{}, time taken: {}".format(failed_reason, time_taken)
+            if parent in critical_collection:
                 missing_critical_info = True
-            critical_failed_commands.append(command + " ---- " + failed_reason)
-        log.write(
-            str(invoke_time) +
-            ":" +
-            command +
-            " ---- " +
-            failed_reason +
-            ", time taken: " +
-            time_taken +
-            "\n")
-    log.close()
+                critical_failed_commands.append("{} ---- {}".format(command, failed_reason))
+        log.write("{}:{} ---- {}\n".format(invoke_time, command, status_message))
 
 # *****************************************************************************************************
 #                               arrange_command_status_log
 # A function to arrange the command log
 # If one of the critical commads failed --> display failed critical commands in the first section of the file + a proper warning
 # display running warnings
-
-
 def arrange_command_status_log():
     temp_log_path = "/tmp/status-log-" + file_name
     with open(temp_log_path, 'r') as temp_log:
