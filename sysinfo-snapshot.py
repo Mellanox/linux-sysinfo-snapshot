@@ -252,7 +252,7 @@ available_fabric_commands_collection = []
 internal_files_collection = ["/sys/devices/system/clocksource/clocksource0/current_clocksource", "/sys/fs/cgroup/net_prio/net_prio.ifpriomap", "/etc/opensm/partitions.conf","/etc/opensm/opensm.conf", "/etc/default/mlnx_snap","/etc/modprobe.d/vxlan.conf", "/etc/security/limits.conf", "/boot/grub/grub.cfg","/boot/grub2/grub.cfg","/boot/grub/grub.conf","/boot/grub2/grub.conf", "/boot/grub/menu.lst","/boot/grub2/menu.lst","/etc/default/grub", "/etc/host.conf", "/etc/hosts", "/etc/hosts.allow", "/etc/hosts.deny", "/etc/issue", "/etc/modprobe.conf","/etc/udev/udev.conf" ,"/etc/ntp.conf", "/etc/resolv.conf", "/etc/sysctl.conf", "/etc/tuned.conf","/etc/dhcp/dhclient.conf","/etc/yum.conf","/etc/bluefield_version", "/proc/cmdline", "/proc/cpuinfo", "/proc/devices", "/proc/diskstats", "/proc/dma", "/proc/meminfo", "/proc/modules", "/proc/mounts", "/proc/net/dev_mcast", "/proc/net/igmp", "/proc/partitions", "/proc/stat", "/proc/sys/net/ipv4/igmp_max_memberships", "/proc/sys/net/ipv4/igmp_max_msf","/proc/uptime", "/proc/version", "/etc/rdma/rdma.conf","/etc/systemd/system/mlnx_interface_mgr@.service","/etc/systemd/system/sysinit.target.wants/openibd.service","/etc/systemd/system/network-online.target.wants/NetworkManager-wait-online.service", "/proc/net/softnet_stat", "/proc/buddyinfo", "/proc/slabinfo", "/proc/pagetypeinfo","/etc/iproute2/rt_tables"]
 available_internal_files_collection = []
 # [field_name, file_name to cat]
-external_files_collection = [["kernel config", "/boot/config-$(uname -r)"],["mlxcables --DDM/--dump","cables/mlxcables_options_output"] ,["config.gz", "/proc/config.gz"],["zoneinfo","/proc/zoneinfo"],[ "interrupts","/proc/interrupts"],["lstopo-no-graphics","lstopo-no-graphics"] ,["lstopo-no-graphics -v -c","lstopo-no-graphics -v -c"],["lspci","lspci"],["lshw","lshw"],["lspci -vvvxxxxx","lspci -vvvxxxxx"],["lspci -xxxvvv","lspci -xxxvvv"],["ps -eLo","ps -eLo"],["ucx_info -c", "ucx_info -c"],["ucx_info -f","ucx_info -f"],["sysctl -a","sysctl -a"], ["netstat -anp","netstat -anp"] ,["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR_IOV", ""],["other_system_files",""],["numa_node",""],["trace","/sys/kernel/debug/tracing/trace"],["lspci -nnvvvxxxx","lspci_nnvvvxxx"],["journalctl -k -o short-monotonic"," journal"]]
+external_files_collection = [["kernel config", "/boot/config-$(uname -r)"],["mlxcables --DDM/--dump","cables/mlxcables_options_output"] ,["config.gz", "/proc/config.gz"],["zoneinfo","/proc/zoneinfo"],[ "interrupts","/proc/interrupts"],["lstopo-no-graphics","lstopo-no-graphics"] ,["lstopo-no-graphics -v -c","lstopo-no-graphics -v -c"],["lspci","lspci"],["lshw","lshw"],["lspci -vvvxxxxx","lspci -vvvxxxxx"],["lspci -xxxvvv","lspci -xxxvvv"],["ps -eLo","ps -eLo"],["ucx_info -c", "ucx_info -c"],["ucx_info -f","ucx_info -f"],["sysctl -a","sysctl -a"], ["netstat -anp","netstat -anp"] ,["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR_IOV", ""],["other_system_files",""],["numa_node",""],["trace","/sys/kernel/debug/tracing/trace"],["lspci -nnvvvxxxx","lspci_nnvvvxxx"],["journalctl -k -o short-monotonic","journal"]]
 available_external_files_collection = []
 copy_under_files = [["etc_udev_rulesd", "/etc/udev/rules.d/"], ["lib_udev_rulesd", "/lib/udev/rules.d/"]]
 copy_openstack_dirs  = [["conf_nova", "/var/lib/config-data/puppet-generated/nova_libvirt"], ["conf_nuetron", "/var/lib/config-data/puppet-generated/neutron/"]]
@@ -3419,7 +3419,7 @@ def add_external_file_if_exists(field_name, curr_path):
         if is_command_allowed(field_name):
             status, command_output = get_status_output(field_name, "10s")
             if (status == 0):
-                if "dmesg" in field_name:
+                if "dmesg" in field_name or field_name == "journalctl -k -o short-monotonic":
                     add_ext_file_handler(field_name, curr_path, command_output)
                 else:
                     add_ext_file_handler(field_name, field_name, command_output)
@@ -3632,7 +3632,7 @@ def arrange_external_files_section():
     if st == 0:
         var_log_files = var_log_files.splitlines()
         for file in var_log_files:
-            if file == 'syslog' or file == 'messages' or file == 'boot.log' or file == 'dmesg':
+            if 'syslog' in file  or 'messages' in file or file == 'boot.log' or 'dmesg' in file or file == "journal"  or "kern.log" in file:
                 add_external_file_if_exists('var/log/'+ file,'var/log/'+ file)
     # add external files if exist to the provided external section e.g. "kernel config"
     for pair in external_files_collection:
