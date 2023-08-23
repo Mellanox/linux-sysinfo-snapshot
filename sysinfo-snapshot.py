@@ -348,16 +348,23 @@ def log(f):
     return wrap
 
 @log
-def get_status_output(command, timeout='10s'):
-    command = 'timeout '+ timeout + ' ' + command
+def get_status_output(command, timeout='10'):
+    command = "timeout " + timeout + "s " + command
     try:
         if " cat " in command:
             filePath = command.split(" cat ")[1]
             if os.path.exists(filePath) and  (not os.access(filePath, os.R_OK)):
                 return 1, "Cant read file "  + filePath + " due to missing permissions"
         p = subprocess.Popen([command], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        stdout, stderr = p.communicate()
-        return p.returncode, standarize_str(stdout)
+        stdout = ""
+        stderr = ""
+        try :
+            stdout, stderr = p.communicate(timeout=int(timeout) +.1)
+            return p.returncode, standarize_str(stdout)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            stderr = "the command " + command + " killed due to timeout (" + timeout +  "s) ended before the command end"
+            return 1, stderr
     except:
         error = "\nError while reading output from command - " + command + "\n"
         return 1, error
@@ -1072,7 +1079,7 @@ def asap_handler():
     try:
         with open(path + file_name + "/asap/ovs_dpctl_dump_flows", "w+") as outF:
             outF.write("ovs-dpctl dump-flows -m\n")
-            st, res = get_status_output("ovs-dpctl dump-flows -m >> " + path + file_name + "/asap/ovs_dpctl_dump_flows", '300s')
+            st, res = get_status_output("ovs-dpctl dump-flows -m >> " + path + file_name + "/asap/ovs_dpctl_dump_flows", '300')
             if st != 0:
                 outF.write("Could not run: ovs-dpctl dump-flows -m")
             else:
@@ -1084,7 +1091,7 @@ def asap_handler():
     try:
         with open(path + file_name + "/asap/tc_qdisc_show", "w+") as outF:
             outF.write("tc qdisc show\n")
-            st, res = get_status_output("tc qdisc show >> " + path + file_name + "/asap/tc_qdisc_show", '300s')
+            st, res = get_status_output("tc qdisc show >> " + path + file_name + "/asap/tc_qdisc_show", '300')
             if st != 0:
                 outF.write("Could not run: ovs-dpctl tc qdisc show")
             else:
@@ -1097,7 +1104,7 @@ def asap_handler():
     try:
         with open(path + file_name + "/asap/ovs-vsctl_get_Open_vSwitch", "w+") as outF:
             outF.write("ovs-vsctl get Open_vSwitch . other_config\n")
-            st, res = get_status_output("ovs-vsctl get Open_vSwitch . other_config >> " + path + file_name + "/asap/ovs-vsctl_get_Open_vSwitch", '300s')
+            st, res = get_status_output("ovs-vsctl get Open_vSwitch . other_config >> " + path + file_name + "/asap/ovs-vsctl_get_Open_vSwitch", '300')
             if st != 0:
                 outF.write("Could not run: ovs-vsctl get Open_vSwitch . other_config")
             else:
@@ -1108,7 +1115,7 @@ def asap_handler():
         running_warnings.append(err)
 
 
-    st, output = get_status_output("ovs-vsctl show | grep Bridge | awk '{$1=$1};1' | cut -d' ' -f 2", '300s')
+    st, output = get_status_output("ovs-vsctl show | grep Bridge | awk '{$1=$1};1' | cut -d' ' -f 2", '300')
     if "command not found" in str(output) or st!= 0:
         try:
             with open(path + file_name + "/asap/ovs_dpctl_dump_flows_bridges", "a+") as outF:
@@ -1123,7 +1130,7 @@ def asap_handler():
                 try:
                     with open(path + file_name + "/asap/ovs_dpctl_dump_flows_bridges", "a+") as outF:
                         outF.write(cmd)
-                        st, res = get_status_output(cmd  + " >> " + path + file_name + "/asap/ovs_dpctl_dump_flows_bridges", '300s')
+                        st, res = get_status_output(cmd  + " >> " + path + file_name + "/asap/ovs_dpctl_dump_flows_bridges", '300')
                         if st != 0:
                             outF.write("Could not run: ovs-dpctl dump-flows")
                         else:
@@ -1150,7 +1157,7 @@ def asap_tc_handler():
         try:
             with open(path + file_name + "/asap_tc/ovs_tc_filter_" + interface, "a+") as outF:
                 outF.write(cmd)
-                st, res = get_status_output(cmd + " >> " + path + file_name + "/asap_tc/ovs_tc_filter_" + interface, '300s')
+                st, res = get_status_output(cmd + " >> " + path + file_name + "/asap_tc/ovs_tc_filter_" + interface, '300')
                 if st != 0:
                     outF.write("Could not run: " + cmd)
                 else:
@@ -1386,7 +1393,7 @@ def command_with_number_of_runs(number_of_runs, device, command, suffix, pcie_de
             else:
                 suffix = " --amber_collect "  + path + file_name +"/amber_info/amber_collect_" + str(i+1) + "_" + str(device) + ".csv"
         command_result += "\n#" + str(i+1) + " " + command + " -d " + device + suffix + "\n\n"
-        mlx_st, command_result_device = get_status_output(command + " -d " + device + suffix, "30s")
+        mlx_st, command_result_device = get_status_output(command + " -d " + device + suffix, "30")
         if pcie_debug:
             output = command + "_" + device + "_run_" + str(i + 1)
             filtered_file_name = output.replace(":", "").replace(".", "")
@@ -1479,7 +1486,7 @@ def save_mlxlink_output_to_file(filtered_file_name,result):
     except:
         print("Error in creating new file in the system : " + file_path)
 
-def general_fw_command_output(command, card, timeout = '80s'):
+def general_fw_command_output(command, card, timeout = '80'):
     commands_dict = {}
     fwflint_error = "Couldn't run mstflint / flint. Please make sure MST or MFT are installed."
     fwdump_error = "Couldn't run mstregdump / mstdump. Please make sure MST or MFT are installed."
@@ -1550,7 +1557,7 @@ def general_fw_command_output(command, card, timeout = '80s'):
     else:
         return (1, command_error, tool_error)
 
-def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80s'):
+def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80'):
     if command == 'fwdump':
         st, res, tool_used = general_fw_command_output(command, card, timeout)
         if tool_used == 'mst':
@@ -3023,7 +3030,7 @@ def ibdiagnet_handler(card, port, ibdiagnet_suffix):
     if (ibdiagnet_is_invoked == False):
         if (os.path.exists(path + file_name + "/" + ibdiagnet_suffix +"/ibdiagnet") == False):
             os.mkdir(path + file_name + "/" + ibdiagnet_suffix + "/ibdiagnet")
-        st, ibdiagnet_res = get_status_output(ibdiagnet_command + card +" -p "+ port +" -o " + path + file_name + "/" + ibdiagnet_suffix + "/ibdiagnet", "30s")
+        st, ibdiagnet_res = get_status_output(ibdiagnet_command + card +" -p "+ port +" -o " + path + file_name + "/" + ibdiagnet_suffix + "/ibdiagnet", "30")
         if st != 0:
             ibdiagnet_error = True
 
@@ -3037,7 +3044,7 @@ def clean_ibnodes(ibnodes, start_string):
 
 def get_dmidecode_info():
     field_name = "dmidecode"
-    status, command_output = get_status_output(field_name, "10s")
+    status, command_output = get_status_output(field_name, "10")
     if (status == 0):
         system_information = re.search("^System((.*\n){4})", command_output, re.MULTILINE)
         if(system_information):
@@ -3406,7 +3413,7 @@ def add_external_file_if_exists(field_name, curr_path):
                 err_command += field_name
     else:
         if is_command_allowed(field_name):
-            status, command_output = get_status_output(field_name, "10s")
+            status, command_output = get_status_output(field_name, "10")
             if (status == 0):
                 if "dmesg" in field_name or field_name == "journalctl -k -o short-monotonic":
                     add_ext_file_handler(field_name, curr_path, command_output)
@@ -4264,7 +4271,7 @@ def performance_lspci(check_latest=False):
             pci_devices[i]["psid"] = check_psid.split()[-1]
             if check_latest:
                 if is_command_allowed('mlxfwmanager --online-query-psid',"check_fw"):
-                    st, check_latest_fw = get_status_output("mlxfwmanager --online-query-psid " + pci_devices[i]["psid"] , "30s")
+                    st, check_latest_fw = get_status_output("mlxfwmanager --online-query-psid " + pci_devices[i]["psid"] , "30")
                     if (st == 0):
                         #     FW             14.20.1010
                         check_latest_fw = re.search("FW((.*\n))", check_latest_fw, re.MULTILINE).group(0).splitlines()
@@ -4447,10 +4454,10 @@ def bw_and_lat():
     if is_command_allowed('perf_samples',"no_ib,perf"):
         for pf_device in pf_devices:
             perf_samples[pf_device] = ""
-            st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e pause -e discards", "20s")
+            st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e pause -e discards", "20")
             if st == 0:
                 perf_samples[pf_device] += "Before test sample: ethtool -S " + pf_device + " | grep -e pause -e discards \n" + pfc_output + "\n"
-            st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e prio", "20s")
+            st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e prio", "20")
             if st == 0:
                 perf_samples[pf_device] += "Before test sample: ethtool -S " + pf_device + " | grep -e prio \n" + pfc_output + "\n"
         ##------------------------------------End samples before test------------------------------------------------##
@@ -4509,10 +4516,10 @@ def bw_and_lat():
     ##------------------------------------Samples after test------------------------------------------------##
     if is_command_allowed('perf_samples',"no_ib,perf"):
         for pf_device in pf_devices:
-            st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e pause -e discards", "20s")
+            st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e pause -e discards", "20")
             if st == 0:
                 perf_samples[pf_device] += "After test sample: ethtool -S " + pf_device + " | grep -e pause -e discards \n" + pfc_output + "\n"
-            st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e prio", "20s")
+            st, pfc_output = get_status_output("ethtool -S " + pf_device + " | grep -e prio", "20")
             if st == 0:
                 perf_samples[pf_device] += "After test sample: ethtool -S " + pf_device + " | grep -e prio \n" + pfc_output + "\n"
     ##------------------------------------End samples after test------------------------------------------------##
@@ -5377,7 +5384,7 @@ def create_tar_file():
     try:
         subprocess.run(['tar', '-czf', path + file_name + ".tgz", '-C',path, file_name])
     except :
-        get_status_output('tar -zcvf ' + path + file_name + ".tgz " +'-C ' + path + " "  +file_name,"20s")
+        get_status_output('tar -zcvf ' + path + file_name + ".tgz " +'-C ' + path + " "  +file_name,"20")
 
 def generate_output():
     global csvfile
