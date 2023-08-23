@@ -842,7 +842,7 @@ def ethtool_all_interfaces_handler():
     if (LooseVersion(version) < LooseVersion('4.7')):
         ethtool_version = "Warning - " + ethtool_version + ", it is older than 4.7 ! \nIt will not show the 25g generation speeds correctly, cause ethtool 4.6 and below do not support it." 
     res += ethtool_version
-    options = ["", "-i", "-g", "-a", "-k", "-c", "-T", "--show-priv-flags", "-n", "-l", "-x"]
+    options = ["", "-i", "-g", "-a", "-k", "-c", "-T","-S", "-u","-m","--show-priv-flags", "--show-fec","--show-tunnels","-n", "-l", "-x"]
     for interface in mellanox_net_devices:
         res += "\n\n"
         for option in options:
