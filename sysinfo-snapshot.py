@@ -1772,19 +1772,8 @@ def mst_func_handler():
     mst_status_rs, mst_status_output = get_status_output("mst status")
     temp = '_run_'
     for card in all_devices:
-        t_dumps = threading.Thread(target = generate_mst_dumps, args = [card, sleep_period, mstregdump_out, mst_status_output,temp])
-        t_dumps.start()
-        threads_dumps.append(t_dumps)
-
-    for card in all_devices:
-        t_logs = threading.Thread(target = generate_card_logs, args = [card, sleep_period, mstregdump_out, mst_status_output])
-        t_logs.start()
-        threads_logs.append(t_logs)
-
-    for thread in threads_logs:
-        thread.join()
-    for thread in threads_dumps:
-        thread.join()
+        generate_mst_dumps(card, sleep_period, mstregdump_out, mst_status_output,temp)
+        generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output)
 
     if mstregdump_out == []:
         mstregdump_out.append("There was no mst query output from this devices\n")
