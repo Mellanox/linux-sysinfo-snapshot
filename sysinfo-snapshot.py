@@ -204,6 +204,7 @@ with_inband_flag = False
 # fsdump_flag can be converted to True by running the tool with --fsdump_flag
 # If check_fw flag is true it runs online check for the latest fw for this psid
 fsdump_flag = False
+no_fw_regdumps_flag = False
 if "--no_ib" in sys.argv:
     no_ib_flag = True
 #perf_flag = False, means not to include more performance commands/function like ib_write_bw and ib_write_lat
@@ -603,7 +604,6 @@ class mlnx_device:
 #return true if command should be invoked. and added to dict in case we are generating new file
 def is_command_allowed(config_key,related_flag=""):
     global config_dict
-
     if generate_config_flag:
         if not config_key in config_dict:
             approved = "yes"
@@ -1502,7 +1502,7 @@ def general_fw_command_output(command, card, timeout = '80'):
     # Invoke MST command as a priority, if it fails invoke MFT command
     # Return 0 --> Command succeeded, 1 --> Failed
 
-    commands_dict['fwdump'] = ["mstregdump " + card, "mstdump " + card]
+    commands_dict['fwdump'] = ["mstdump " + card, "mstregdump " + card]
     commands_dict['fwconfig'] = ["mstconfig -d " + card + " -e  q", "mlxconfig -d " + card + " -e  q"]
     commands_dict['fwflint'] = ["mstflint -d " + card, "flint -d " + card]
     commands_dict['mlxdump'] = ["mlxdump -d " + card + " pcie_uc --all"]
@@ -1525,15 +1525,18 @@ def general_fw_command_output(command, card, timeout = '80'):
     elif command == 'fwdump':
         if (not is_MFT_installed and not is_MST_installed):
             return(1, fwdump_error, tool_error)
-        st, fw_query = get_status_output(commands_dict['fwdump'][0], timeout)
-        if st == 0:
-            return(0, fw_query, 'mst')
-        else:
-            st, fw_query = get_status_output(commands_dict['fwdump'][1], timeout)
+        if(not no_fw_regdumps_flag):
+            st, fw_query = get_status_output(commands_dict['fwdump'][0], timeout)
             if st == 0:
                 return(0, fw_query, 'mft')
             else:
-                return(1, command_error, tool_error)
+                st, fw_query = get_status_output(commands_dict['fwdump'][1], timeout)
+                if st == 0:
+                    return(0, fw_query, 'mst')
+                else:
+                    return(1, command_error, tool_error)
+        else:
+            return(1, "no_fw_regdumps_flag is used, the fw regdump commands are not executed.", tool_error)
     elif command == 'fwconfig':
         if (not is_MFT_installed and not is_MST_installed):
             return(1, fwconfig_error, tool_error)
@@ -1750,12 +1753,15 @@ def generate_mst_dumps(card, sleep_period, mstregdump_out, mst_status_output,tem
         filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
         output_file, tool_used, is_error = general_fw_commands_handler('fwdump', card, filtered_file_name)
         if is_error == 0:
-            if tool_used == 'mst':
-                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstregdump_" + output + "</a></td><br />")
+            if(not no_fw_regdumps_flag):
+                if tool_used == 'mst':
+                    mstregdump_out.append("<td><a href=\""+ output_file +"\">mstregdump_" + output + "</a></td><br />")
+                else:
+                    mstregdump_out.append("<td><a href=\""+ output_file +"\">mstdump_" + output + "</a></td><br />")
+                time.sleep(sleep_period)
             else:
-                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstdump_" + output + "</a></td><br />")
-            time.sleep(sleep_period)
-
+                mstregdump_out.append("<td>no_fw_regdumps_flag is used, the fw regdump commands are not executed.</td><br />")
+                break
 #**********************************************************
 #        mst_commands_query_output Handlers
 def mst_func_handler():
@@ -2400,13 +2406,6 @@ def add_command_if_exists(command):
         print_err_flag = 0
     elif (command == "mget_temp_query"):
         result = mstcommand_d_handler('mget_temp')
-        status = 0
-        print_err_flag = 0
-    elif (command == "mlxconfig_query"):
-        if is_MST_installed:
-            result = "mlxconfig output is the same as mstconfig, thus mlxconfig output is not generated ,you can find the output under firmware directory "
-        else:
-            result = mstcommand_d_handler('mlxconfig')
         status = 0
         print_err_flag = 0
     elif ("mst_commands_query_output" in command):
@@ -4800,8 +4799,8 @@ def html_write_paragraph(html, base, collection, dict, prev_parag_end):
                     html.write("&nbsp;&nbsp;&nbsp;&nbsp;")
                 else:
                     for value in server_commands_dict[collection[i]]:
-                        html.write(value)
                         html.write("&nbsp;&nbsp;&nbsp;&nbsp;")
+                        html.write(value)
             else:
                 if(server_commands_dict[collection[i]]):
                     for value in server_commands_dict[collection[i]]:
@@ -5471,6 +5470,9 @@ def generate_output():
     arrange_dicts()
     #generate sub chain commands in config file
     if generate_config_flag:
+        related_flag = "no_fw/no_fw_regdumps_flag"
+        config_key = "mstregdump/mstdump "
+        is_command_allowed(config_key,related_flag)
         for command in sub_chain_commands:
             related_flag = ""
             if command == "ibdiagnet":
@@ -5565,6 +5567,7 @@ def update_flags(args):
     global with_inband_flag
     global pcie_debug_flag
     global fsdump_flag
+    global no_fw_regdumps_flag
     global json_flag
     global verbose_flag
     global verbose_count
@@ -5635,6 +5638,8 @@ def update_flags(args):
         no_fw_flag = True
     if (args.fsdump):
         fsdump_flag = True
+    if (args.no_fw_regdumps):
+        no_fw_regdumps_flag = True
     if (args.perf):
         perf_flag = True
     if (args.ibdiagnet_ext):
@@ -5777,6 +5782,7 @@ def get_parsed_args():
         parser.add_option("--ufm", help="add ufm logs to the output.", action='store_true')
         parser.add_option("--no_fw", help="do not add firmware commands to the output.", action='store_true')
         parser.add_option("--fsdump", help="add fsdump firmware command to the output.", action='store_true')
+        parser.add_option("--no_fw_regdumps", help="disable regdumps firmware command.", action='store_true')
         parser.add_option("--mtusb", help="add I2C mstdump files to the output.", action='store_true')
         parser.add_option("--ibdiagnet", help="add ibdiagnet command to the output.", action='store_true')
         parser.add_option("--ibdiagnet_ext", help="add ibdiagnet ext command to the output.", action='store_true')
@@ -5815,6 +5821,7 @@ def get_parsed_args():
         parser.add_argument("--ufm", help="add ufm logs to the output.", action='store_true')
         parser.add_argument("--no_fw", help="do not add firmware commands to the output.", action='store_true')
         parser.add_argument("--fsdump", help="add fsdump firmware command to the output.", action='store_true')
+        parser.add_argument("--no_fw_regdumps", help="disable regdumps firmware command.", action='store_true')
         parser.add_argument("--mtusb", help="add I2C mstdump files to the output.", action='store_true')
         parser.add_argument("--with_inband", help="add in-band cable info to the output.", action='store_true')
         parser.add_argument("--ibdiagnet_ext", help="add ibdiagnet ext command to the output.", action='store_true')
