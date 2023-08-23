@@ -5386,9 +5386,9 @@ def create_tar_file():
     # Arrange status log and copy it into the tar file
     arrange_command_status_log()
     try:
-        subprocess.run(['tar', '-czf', path + file_name + ".tgz", path + file_name])
+        subprocess.run(['tar', '-czf', path + file_name + ".tgz", '-C',path, file_name])
     except :
-        get_status_output('tar -zcvf ' + path + file_name + ".tgz " + path + file_name,"20s")
+        get_status_output('tar -zcvf ' + path + file_name + ".tgz " +'-C ' + path + " "  +file_name,"20s")
 
 def generate_output():
     global csvfile
