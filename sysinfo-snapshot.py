@@ -146,7 +146,7 @@ not_present = "Not Present"
 present = "Present"
 perf_status_dict = {}
 perf_val_dict = {}
-perf_external_files_collection = [["mlnx_tune -r -i "+ path + file_name, "mlnx_tune_r"]]
+perf_external_files_collection = [["mlnx_tune -r -i ", "mlnx_tune_r"]]
 perf_samples = {}
 bandwidth = {}
 latency = {}
@@ -268,7 +268,7 @@ running_warnings = []
 #command not found 
 command_exists_dict = {}
 #commands that are part of higher chain commands ,used when generating config file
-sub_chain_commands = ["file: var/log/syslog", "file: var/log/messages", "file: var/log/boot.log", "mlnx_tune -i " + path + file_name, "ib_write_bw_test", "latency", "perf_samples", "mlxfwmanager --online-query-psid", "file: /sys/class/infiniband/*/iov", "file: /sys/class/infiniband/*/device/"]
+sub_chain_commands = ["file: var/log/syslog", "file: var/log/messages", "file: var/log/boot.log", "mlnx_tune -i " , "ib_write_bw_test", "latency", "perf_samples", "mlxfwmanager --online-query-psid", "file: /sys/class/infiniband/*/iov", "file: /sys/class/infiniband/*/device/"]
 critical_collection = PCIE_debugging_collection # List of all critical commands
 critical_collection.append("general_fw_command_output")
 critical_collection.append("mstcommand_d_handler")
@@ -3291,7 +3291,7 @@ def add_internal_file_if_exists(file_full_path):
 # command_output - is the content of the out_file_name
 
 def add_ext_file_handler(field_name, out_file_name, command_output):
-    external_command = ["pcie_debug_dict","sysctl -a","ps -eLo","chkconfig","ucx_info -f","ucx_info -c","numa_node","netstat -anp","lstopo-no-graphics","lstopo-no-graphics -v -c","mlnx_tune -r -i " + path + file_name,"zoneinfo","other_system_files","interrupts"]
+    external_command = ["pcie_debug_dict","sysctl -a","ps -eLo","chkconfig","ucx_info -f","ucx_info -c","numa_node","netstat -anp","lstopo-no-graphics","lstopo-no-graphics -v -c","mlnx_tune -r -i ","zoneinfo","other_system_files","interrupts"]
     forbidden_chars = re.compile('([\/:*?"<||-])')
     out_file_name = forbidden_chars.sub(r'', out_file_name).replace("\\", "") # clean the file name
     out_file_name = out_file_name.replace(" ","_")
@@ -3501,17 +3501,13 @@ def add_external_file_if_exists(field_name, curr_path):
                 err_command += "find /sys | grep numa_node | grep -v uevent |sort"
     elif ("mlnx_tune" in field_name):
         if is_command_allowed("mlnx_tune","no_ib"):
-            status, command_output = get_status_output("./mlnx_tune -r -i " + path + file_name, "1m")
-            if not (("No such file or directory" in command_output) or ((status != 0) and not ("Unsupported" in command_output))):
-                add_ext_file_handler(field_name, curr_path, command_output)
+            status, command_output = get_status_output(field_name + path + file_name , "1m")
+            if not (status == 0 or ("Unsupported" in command_output)):
+                err_flag = 1
+                err_command += field_name + " - tool is not installed, and there is no script mlnx_tune"
+                err_command += "\nmlnx_tune tool is available on Mellanox OFED 3.0.0 and above"
             else:
-                status, command_output = get_status_output(field_name, "1m")
-                if not (status == 0 or ("Unsupported" in command_output)):
-                    err_flag = 1
-                    err_command += field_name + " - tool is not installed, and there is no script mlnx_tune"
-                    err_command += "\nmlnx_tune tool is available on Mellanox OFED 3.0.0 and above"
-                else:
-                    add_ext_file_handler(field_name, curr_path, command_output)
+                add_ext_file_handler(field_name, curr_path, command_output)
     elif ("dmidecode" in field_name):
         if is_command_allowed("dmidecode"):
             status = get_dmidecode_info()
