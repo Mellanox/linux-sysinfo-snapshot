@@ -241,7 +241,7 @@ commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --
                         "initctl list", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod",  "lspci -tv", "lspci -vv", \
                         "mount", "mst_commands_query_output", "asap_parameters", "asap_tc_information","rdma_tool",  "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info",  "ip route show table all", "service --status-all", \
                         "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all",  "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname", \
-                        "yy_MLX_modules_parameters", "sysclass_IB_modules_parameters", "proc_net_bonding_files", "sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", \
+                        "yy_MLX_modules_parameters", "sysclass_IB_modules_parameters", "proc_net_bonding_files","Mellanox_Nvidia_pci_buses" ,"sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", \
                         "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "ip -6 addr show", "ip -6 route show", "modinfo", "show_pretty_gids", "flint -v",  "mstflint -v","dkms status",\
                         "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status", "mlxlink / mstlink", "mget_temp_query", "mlnx_qos_handler", "devlink_handler", "se_linux_status", \
                         "ufm_logs", "virsh version","virsh list --all", "virsh vcpupin", "sys_class_infiniband_ib_paameters", "sys_class_net_ecn_ib","roce counters","route -n","numastat -n","NetworkManager --print-config","networkManager_system_connections","USER","mlxreg -d --reg_name ROCE_ACCL --get"\
@@ -1337,7 +1337,7 @@ def mlxcables_options_handler():
                 res += '\n\n****************************************\n\n'
             res += 'mlxcables -d ' + mlxcable + ' ' + option + '\n\n'
             res_st, res_mlxcable_option = get_status_output('mlxcables -d ' + mlxcable + ' ' + option)
-            if res_st != 0 and st != CANCELED_STATUS:
+            if res_st != 0 and res_st != CANCELED_STATUS:
                 res_mlxcable_option = 'Could not run: \"mlxcables -d ' + mlxcable + ' ' + option + '"'
             res += res_mlxcable_option
             flag = 1
@@ -2143,13 +2143,40 @@ def nvsm_dump_health_handler():
     # the result of the command is a tar archive maybe have to use tar commad annd append the archive contant as href
     st,result = get_status_output("nvsm dump health -tfp " + path + file_name, "6m")
     if st != 0:
-        if ST == CANCELED_STATUS:
+        if st == CANCELED_STATUS:
             return 1, result
         res += "Could not run the command - nvsm dump health\n\n" + result
     else:
         res += "Produced a health report as .tar archive in the given path " + path
     res += "---------------------------------------------------------\n\n"
     return st, res
+
+# *******************************************************************
+#            pci_bus handler
+
+def pci_bus_handler():
+    res = ""
+    st,result = get_status_output("lspci -nnd ::0302")
+    if st == 0  and result :
+        lines = result.splitlines()
+        res = "Nvidia pci buses \n"
+        for line in lines:
+            device = line.split()[0]
+            path = os.readlink("/sys/bus/pci/devices/0000:" + device)
+            res += path + "\n"
+        res += " RP   |  UP      iDP     iUP     DP   |  UP      iDP     iUP     DP   |  UP      DP   |  EP \n"
+        res += "  CPU  |           CDFP Switch         |          Switch Board         | GPU Baseboard |  GPU \n"
+    st,result = get_status_output("lspci -nnd 15b3:")
+    if st == 0  and result :
+        lines = result.splitlines()
+        res += "Mellanox pci buses \n"
+        for line in lines:
+            device = line.split()[0]
+            path = os.readlink("/sys/bus/pci/devices/0000:" + device)
+            res += path + "\n"
+        res += "  RP   |  UP      iDP     iUP     DP   |  UP      iDP     iUP     DP   |  EP \n"
+        res += "  CPU  |           CDFP Switch         |          Switch Board         |  NIC \n"
+    return 0,res
 
 # *******************************************************************
 #            mlxreg <mst_device> handler
@@ -2602,6 +2629,14 @@ def add_command_if_exists(command):
             print_err_flag = 1
     elif (command == "proc_net_bonding_files"):
         status, result = zz_files_handler('/proc/net/bonding/')
+        if (status == 0):
+            status = 0
+            print_err_flag = 0
+        else:
+            status = 1
+            print_err_flag = 1
+    elif (command == "Mellanox_Nvidia_pci_buses"):
+        status, result = pci_bus_handler()
         if (status == 0):
             status = 0
             print_err_flag = 0
