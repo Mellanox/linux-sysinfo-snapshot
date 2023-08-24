@@ -3609,7 +3609,7 @@ def arrange_fabric_commands_section():
 
 def arrange_internal_files_section():
     if (cur_os == "debian"):
-        internal_files_collection.extend(["/etc/debian_version","/etc/network/interfaces"])
+        internal_files_collection.extend(["/etc/debian_version","/etc/network/interfaces","/etc/networks"])
     if verbose_flag:
         print("\tGenerating internal files section has started")
     # Internal files with static paths handlers
@@ -3641,16 +3641,6 @@ def arrange_internal_files_section():
                     add_internal_file_if_exists("/etc/netplan/" + file)
                     if verbose_count == 2:
                         print("\t\t/etc/netplan/" + file + " - end")
-    if is_command_allowed("file: /etc/network/") and (cur_os == "debian"):
-        if (os.path.exists("/etc/network/") == True):
-            for subdir, dirs, files in os.walk("/etc/network/"):
-                for file in files:
-                    if (os.path.isfile(os.path.join(subdir, file)) == True):
-                        if verbose_count == 2:
-                            print("\t\t" + os.path.join(subdir, file)+ " - start")
-                        add_internal_file_if_exists(os.path.join(subdir, file))
-                        if verbose_count == 2:
-                            print("\t\t" + os.path.join(subdir, file) + " - end")
     if is_command_allowed("file: /proc/net/vlan/" ):
         if (os.path.exists("/proc/net/vlan/") == True):
             for file in os.listdir("/proc/net/vlan/"):
@@ -3873,7 +3863,6 @@ def add_sriov_command_if_exists(command):
             f.close()
 
 def add_sriov_internal_file_if_exists(file_full_path):
-
     # put provided file textual content in result
     status, result = get_status_output("cat " + file_full_path)
 
@@ -4014,17 +4003,6 @@ def arrange_sriov_internal_files_section():
                                 add_sriov_internal_file_if_exists("/sys/class/net/" + indir + "/" + inSomething)
                                 if verbose_count == 2:
                                     print("\t\t\t/sys/class/net/" + indir + "/" + inSomething + " - end")
-    if is_command_allowed("file: /sys/bus/pci/devices/"):
-        if os.path.exists("/sys/bus/pci/devices/"):
-            for indir in os.listdir("/sys/bus/pci/devices/"):
-                if os.path.isfile("/sys/bus/pci/devices/" + indir) == False:
-                    if os.path.isfile("/sys/bus/pci/devices/" + indir + "/reset"):
-                        if verbose_count == 2:
-                            print("\t\t\t/sys/bus/pci/devices/" + indir + "/reset - start")
-                        add_sriov_internal_file_if_exists("/sys/bus/pci/devices/" + indir + "/reset")
-                        if verbose_count == 2:
-                            print("\t\t\t/sys/bus/pci/devices/" + indir + "/reset - end")
-
     if verbose_flag:
         print("\t\tGenerating sr_iov internal files section has ended")
 
