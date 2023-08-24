@@ -255,7 +255,7 @@ available_PCIE_debugging_collection_dict = {}
 fabric_commands_collection = [ "ib_mc_info_show", "sm_version", "Multicast_Information", "perfquery_cards_ports"]
 fabric_multi_sub_commands_collection = ["ibdiagnet", "ib_find_bad_ports", "ib_find_disabled_ports", "ib_topology_viewer", "ibhosts", "ibswitches", "sminfo", "sm_status", "sm_master_is", "ib_switches_FW_scan"]
 available_fabric_commands_collection = []
-internal_files_collection = ["/sys/devices/system/clocksource/clocksource0/current_clocksource", "/sys/fs/cgroup/net_prio/net_prio.ifpriomap", "/etc/opensm/partitions.conf","/etc/opensm/opensm.conf", "/etc/default/mlnx_snap","/etc/modprobe.d/vxlan.conf", "/etc/security/limits.conf", "/boot/grub/grub.cfg","/boot/grub2/grub.cfg","/boot/grub/grub.conf","/boot/grub2/grub.conf", "/boot/grub/menu.lst","/boot/grub2/menu.lst","/etc/default/grub", "/etc/host.conf", "/etc/hosts", "/etc/hosts.allow", "/etc/hosts.deny", "/etc/issue", "/etc/modprobe.conf","/etc/udev/udev.conf" ,"/etc/ntp.conf", "/etc/resolv.conf", "/etc/sysctl.conf", "/etc/tuned.conf","/etc/dhcp/dhclient.conf","/etc/yum.conf","/etc/bluefield_version", "/proc/cmdline", "/proc/cpuinfo", "/proc/devices", "/proc/diskstats", "/proc/dma", "/proc/meminfo", "/proc/modules", "/proc/mounts", "/proc/net/dev_mcast", "/proc/net/igmp", "/proc/partitions", "/proc/stat", "/proc/sys/net/ipv4/igmp_max_memberships", "/proc/sys/net/ipv4/igmp_max_msf","/proc/uptime", "/proc/version", "/etc/rdma/rdma.conf","/etc/systemd/system/mlnx_interface_mgr@.service","/etc/systemd/system/sysinit.target.wants/openibd.service","/etc/systemd/system/network-online.target.wants/NetworkManager-wait-online.service", "/proc/net/softnet_stat", "/proc/buddyinfo", "/proc/slabinfo", "/proc/pagetypeinfo","/etc/iproute2/rt_tables"]
+internal_files_collection = ["/sys/devices/system/clocksource/clocksource0/current_clocksource", "/sys/fs/cgroup/net_prio/net_prio.ifpriomap", "/etc/opensm/partitions.conf","/etc/opensm/opensm.conf", "/etc/default/mlnx_snap","/etc/modprobe.d/vxlan.conf", "/etc/security/limits.conf", "/boot/grub/grub.cfg","/boot/grub2/grub.cfg","/boot/grub/grub.conf","/boot/grub2/grub.conf", "/boot/grub/menu.lst","/boot/grub2/menu.lst","/etc/default/grub", "/etc/host.conf", "/etc/hosts", "/etc/hosts.allow", "/etc/hosts.deny", "/etc/issue", "/etc/modprobe.conf","/etc/udev/udev.conf" ,"/etc/ntp.conf", "/etc/resolv.conf", "/etc/sysctl.conf", "/etc/tuned.conf","/etc/dhcp/dhclient.conf","/etc/yum.conf","/etc/bluefield_version", "/proc/cmdline", "/proc/cpuinfo", "/proc/devices", "/proc/diskstats", "/proc/dma", "/proc/meminfo", "/proc/modules", "/proc/mounts", "/proc/net/dev_mcast", "/proc/net/igmp", "/proc/partitions", "/proc/stat", "/proc/sys/net/ipv4/igmp_max_memberships", "/proc/sys/net/ipv4/igmp_max_msf","/proc/uptime", "/proc/version", "/etc/rdma/rdma.conf","/etc/systemd/system/mlnx_interface_mgr@.service","/etc/systemd/system/sysinit.target.wants/openibd.service", "/proc/net/softnet_stat", "/proc/buddyinfo", "/proc/slabinfo", "/proc/pagetypeinfo","/etc/iproute2/rt_tables"]
 available_internal_files_collection = []
 # [field_name, file_name to cat]
 external_files_collection = [["kernel config", "/boot/config-$(uname -r)"],["mlxcables --DDM/--dump","cables/mlxcables_options_output"] ,["config.gz", "/proc/config.gz"],["zoneinfo","/proc/zoneinfo"],[ "interrupts","/proc/interrupts"],["lstopo-no-graphics","lstopo-no-graphics"] ,["lstopo-no-graphics -v -c","lstopo-no-graphics -v -c"],["lspci","lspci"],["lshw","lshw"],["lspci -vvvxxxxx","lspci -vvvxxxxx"],["ps -eLo","ps -eLo"],["ucx_info -c", "ucx_info -c"],["ucx_info -f","ucx_info -f"],["sysctl -a","sysctl -a"], ["netstat -anp","netstat -anp"] ,["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR_IOV", ""],["other_system_files",""],["numa_node",""],["trace","/sys/kernel/debug/tracing/trace"],["lspci -nnvvvxxxx","lspci_nnvvvxxx"],["journalctl -k -o short-monotonic","journal"]]
@@ -1010,7 +1010,7 @@ def devlink_handler():
 def mlnx_qos_handler():
     if not pf_devices:
         return "No interfaces were found"
-    st,res = getstatusoutput("mlnx_qos")
+    st,res = getstatusoutput("mlnx_qos --version")
     if(st != 0 and "command not found" in res):
         return "mlnx_qos command not found"
     mellanox_net_devices = pf_devices
@@ -3665,7 +3665,7 @@ def arrange_internal_files_section():
     if is_command_allowed("file: /sys/devices/system/node/" ):
         if (os.path.exists("/sys/devices/system/node/") == True):
             for file in os.listdir("/sys/devices/system/node/"):
-                if (os.path.isfile("/sys/devices/system/node/"+file) == False):
+                if (os.path.isfile("/sys/devices/system/node/"+file) == False) and (os.path.exists("/sys/devices/system/node/"+file+"/cpulist")):
                     if verbose_count == 2:
                         print("\t\t/sys/devices/system/node/" + file + "/cpulist - start")
                     add_internal_file_if_exists("/sys/devices/system/node/"+file+"/cpulist")
@@ -3674,7 +3674,8 @@ def arrange_internal_files_section():
     if is_command_allowed("file: /etc/sysconfig/network-scripts/ifcfg*" ):
         if (cur_os != "debian" and os.path.exists("/etc/sysconfig/network-scripts/") == True):
             for file in os.listdir("/etc/sysconfig/network-scripts/"):
-                if ( (os.path.isfile("/etc/sysconfig/network-scripts/"+file) == True) and (file.startswith("ifcfg")) ):
+                suffixes = [".back", ".bak", ".save"]
+                if ( (os.path.isfile("/etc/sysconfig/network-scripts/"+file) == True) and (file.startswith("ifcfg")) and not  any(file.endswith(suffix) for suffix in suffixes) ):
                     if verbose_count == 2:
                         print("\t\t/etc/sysconfig/network-scripts/" + file + " - start")
                     add_internal_file_if_exists("/etc/sysconfig/network-scripts/" + file)
@@ -3973,20 +3974,6 @@ def arrange_sriov_internal_files_section():
                                         add_sriov_internal_file_if_exists("/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/pkey_idx/" + str(n))
                                         if verbose_count == 2:
                                             print("\t\t\t/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/pkey_idx/" + str(n) + " - end")
-    if is_command_allowed("file: /sys/bus/pci/drivers/"):
-        if os.path.exists("/sys/bus/pci/drivers/"):
-            for indir in os.listdir("/sys/bus/pci/drivers/"):
-                if indir.endswith("core"):
-                    if verbose_count == 2:
-                        print("\t\t\t/sys/bus/pci/drivers/"+ indir + "/unbind - start")
-                    add_sriov_internal_file_if_exists("/sys/bus/pci/drivers/"+ indir + "/unbind")
-                    if verbose_count == 2:
-                        print("\t\t\t/sys/bus/pci/drivers/"+ indir + "/unbind - end")
-                    if verbose_count == 2:
-                        print("\t\t\t/sys/bus/pci/drivers/"+ indir + "/bind - start")
-                    add_sriov_internal_file_if_exists("/sys/bus/pci/drivers/"+ indir + "/bind")
-                    if verbose_count == 2:
-                        print("\t\t\t/sys/bus/pci/drivers/"+ indir + "/bind - end")
     if is_command_allowed("file: /etc/sysconfig/network-scripts/" ):
         if os.path.exists("/etc/sysconfig/network-scripts/"):
             for infile in os.listdir("/etc/sysconfig/network-scripts/"):
