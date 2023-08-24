@@ -258,7 +258,7 @@ available_fabric_commands_collection = []
 internal_files_collection = ["/sys/devices/system/clocksource/clocksource0/current_clocksource", "/sys/fs/cgroup/net_prio/net_prio.ifpriomap", "/etc/opensm/partitions.conf","/etc/opensm/opensm.conf", "/etc/default/mlnx_snap","/etc/modprobe.d/vxlan.conf", "/etc/security/limits.conf", "/boot/grub/grub.cfg","/boot/grub2/grub.cfg","/boot/grub/grub.conf","/boot/grub2/grub.conf", "/boot/grub/menu.lst","/boot/grub2/menu.lst","/etc/default/grub", "/etc/host.conf", "/etc/hosts", "/etc/hosts.allow", "/etc/hosts.deny", "/etc/issue", "/etc/modprobe.conf","/etc/udev/udev.conf" ,"/etc/ntp.conf", "/etc/resolv.conf", "/etc/sysctl.conf", "/etc/tuned.conf","/etc/dhcp/dhclient.conf","/etc/yum.conf","/etc/bluefield_version", "/proc/cmdline", "/proc/cpuinfo", "/proc/devices", "/proc/diskstats", "/proc/dma", "/proc/meminfo", "/proc/modules", "/proc/mounts", "/proc/net/dev_mcast", "/proc/net/igmp", "/proc/partitions", "/proc/stat", "/proc/sys/net/ipv4/igmp_max_memberships", "/proc/sys/net/ipv4/igmp_max_msf","/proc/uptime", "/proc/version", "/etc/rdma/rdma.conf","/etc/systemd/system/mlnx_interface_mgr@.service","/etc/systemd/system/sysinit.target.wants/openibd.service","/etc/systemd/system/network-online.target.wants/NetworkManager-wait-online.service", "/proc/net/softnet_stat", "/proc/buddyinfo", "/proc/slabinfo", "/proc/pagetypeinfo","/etc/iproute2/rt_tables"]
 available_internal_files_collection = []
 # [field_name, file_name to cat]
-external_files_collection = [["kernel config", "/boot/config-$(uname -r)"],["mlxcables --DDM/--dump","cables/mlxcables_options_output"] ,["config.gz", "/proc/config.gz"],["zoneinfo","/proc/zoneinfo"],[ "interrupts","/proc/interrupts"],["lstopo-no-graphics","lstopo-no-graphics"] ,["lstopo-no-graphics -v -c","lstopo-no-graphics -v -c"],["lspci","lspci"],["lshw","lshw"],["lspci -vvvxxxxx","lspci -vvvxxxxx"],["lspci -xxxvvv","lspci -xxxvvv"],["ps -eLo","ps -eLo"],["ucx_info -c", "ucx_info -c"],["ucx_info -f","ucx_info -f"],["sysctl -a","sysctl -a"], ["netstat -anp","netstat -anp"] ,["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR_IOV", ""],["other_system_files",""],["numa_node",""],["trace","/sys/kernel/debug/tracing/trace"],["lspci -nnvvvxxxx","lspci_nnvvvxxx"],["journalctl -k -o short-monotonic","journal"]]
+external_files_collection = [["kernel config", "/boot/config-$(uname -r)"],["mlxcables --DDM/--dump","cables/mlxcables_options_output"] ,["config.gz", "/proc/config.gz"],["zoneinfo","/proc/zoneinfo"],[ "interrupts","/proc/interrupts"],["lstopo-no-graphics","lstopo-no-graphics"] ,["lstopo-no-graphics -v -c","lstopo-no-graphics -v -c"],["lspci","lspci"],["lshw","lshw"],["lspci -vvvxxxxx","lspci -vvvxxxxx"],["ps -eLo","ps -eLo"],["ucx_info -c", "ucx_info -c"],["ucx_info -f","ucx_info -f"],["sysctl -a","sysctl -a"], ["netstat -anp","netstat -anp"] ,["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR_IOV", ""],["other_system_files",""],["numa_node",""],["trace","/sys/kernel/debug/tracing/trace"],["lspci -nnvvvxxxx","lspci_nnvvvxxx"],["journalctl -k -o short-monotonic","journal"]]
 available_external_files_collection = []
 copy_under_files = [["etc_udev_rulesd", "/etc/udev/rules.d/"], ["lib_udev_rulesd", "/lib/udev/rules.d/"]]
 copy_openstack_dirs  = [["conf_nova", "/var/lib/config-data/puppet-generated/nova_libvirt"], ["conf_nuetron", "/var/lib/config-data/puppet-generated/neutron/"]]
@@ -3367,25 +3367,6 @@ def add_external_file_if_exists(field_name, curr_path):
         else:
             err_flag = 1
             err_command +=command
-    elif(field_name == "lspci -xxxvvv"):
-        if is_command_allowed("lspci -xxxvvv"):
-            cmd = "lspci | awk '{print $1}'"
-            st, output = get_status_output(cmd)
-            if (st == 0 and output == ""):
-                err_flag = 1
-                err_command += "lspci | awk '{print $1}'"
-            else:
-                interfaces = output.splitlines()
-                command_output = ""
-                for i in range(0, len(interfaces)):
-                    cmd = "lspci -s " + interfaces[i].strip() + " -xxxvvv"
-                    st2, output2 = get_status_output(cmd)
-                    if st2 == 0 and output2 != "":
-                        command_output += cmd + "\n"
-                        command_output += output2
-                        if i != len(interfaces)-1:
-                            command_output += "\n----------------------------------------\n\n"
-                add_ext_file_handler(field_name, field_name, command_output)
     elif (field_name == "ibnetdiscover"):
         if is_command_allowed("ibnetdiscover","no_ib"):
             if (is_ib == 0 and no_ib_flag == False):
