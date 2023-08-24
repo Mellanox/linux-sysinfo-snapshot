@@ -238,7 +238,7 @@ PCIE_debugging_collection =  ["dmidecode", "performance_lspci", "lscpu", "mlxlin
 ib_collection = []
 commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", \
                         "df -lh", "/opt/mellanox/ethtool/sbin/ethtool --version", "ethtool_version", "ethtool_all_interfaces", "fdisk -l", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", \
-                        "initctl list", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod",  "lspci -tv", "lspci -vv", \
+                        "initctl list", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod",  "lspci -tv", \
                         "mount", "mst_commands_query_output", "asap_parameters", "asap_tc_information","rdma_tool",  "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info",  "ip route show table all", "service --status-all", \
                         "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all",  "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname", \
                         "yy_MLX_modules_parameters", "sysclass_IB_modules_parameters", "proc_net_bonding_files","Mellanox_Nvidia_pci_buses" ,"sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", \
@@ -258,7 +258,7 @@ available_fabric_commands_collection = []
 internal_files_collection = ["/sys/devices/system/clocksource/clocksource0/current_clocksource", "/sys/fs/cgroup/net_prio/net_prio.ifpriomap", "/etc/opensm/partitions.conf","/etc/opensm/opensm.conf", "/etc/default/mlnx_snap","/etc/modprobe.d/vxlan.conf", "/etc/security/limits.conf", "/boot/grub/grub.cfg","/boot/grub2/grub.cfg","/boot/grub/grub.conf","/boot/grub2/grub.conf", "/boot/grub/menu.lst","/boot/grub2/menu.lst","/etc/default/grub", "/etc/host.conf", "/etc/hosts", "/etc/hosts.allow", "/etc/hosts.deny", "/etc/issue", "/etc/modprobe.conf","/etc/udev/udev.conf" ,"/etc/ntp.conf", "/etc/resolv.conf", "/etc/sysctl.conf", "/etc/tuned.conf","/etc/dhcp/dhclient.conf","/etc/yum.conf","/etc/bluefield_version", "/proc/cmdline", "/proc/cpuinfo", "/proc/devices", "/proc/diskstats", "/proc/dma", "/proc/meminfo", "/proc/modules", "/proc/mounts", "/proc/net/dev_mcast", "/proc/net/igmp", "/proc/partitions", "/proc/stat", "/proc/sys/net/ipv4/igmp_max_memberships", "/proc/sys/net/ipv4/igmp_max_msf","/proc/uptime", "/proc/version", "/etc/rdma/rdma.conf","/etc/systemd/system/mlnx_interface_mgr@.service","/etc/systemd/system/sysinit.target.wants/openibd.service", "/proc/net/softnet_stat", "/proc/buddyinfo", "/proc/slabinfo", "/proc/pagetypeinfo","/etc/iproute2/rt_tables"]
 available_internal_files_collection = []
 # [field_name, file_name to cat]
-external_files_collection = [["kernel config", "/boot/config-$(uname -r)"],["mlxcables --DDM/--dump","cables/mlxcables_options_output"] ,["config.gz", "/proc/config.gz"],["zoneinfo","/proc/zoneinfo"],[ "interrupts","/proc/interrupts"],["lstopo-no-graphics","lstopo-no-graphics"] ,["lstopo-no-graphics -v -c","lstopo-no-graphics -v -c"],["lspci","lspci"],["lshw","lshw"],["lspci -vvvxxxxx","lspci -vvvxxxxx"],["ps -eLo","ps -eLo"],["ucx_info -c", "ucx_info -c"],["ucx_info -f","ucx_info -f"],["sysctl -a","sysctl -a"], ["netstat -anp","netstat -anp"] ,["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR_IOV", ""],["other_system_files",""],["numa_node",""],["trace","/sys/kernel/debug/tracing/trace"],["lspci -nnvvvxxxx","lspci_nnvvvxxx"],["journalctl -k -o short-monotonic","journal"]]
+external_files_collection = [["kernel config", "/boot/config-$(uname -r)"],["mlxcables --DDM/--dump","cables/mlxcables_options_output"] ,["config.gz", "/proc/config.gz"],["zoneinfo","/proc/zoneinfo"],[ "interrupts","/proc/interrupts"],["lstopo-no-graphics","lstopo-no-graphics"] ,["lstopo-no-graphics -v -c","lstopo-no-graphics -v -c"],["lspci","lspci"],["lshw","lshw"],["lspci -vvvxxxxx","lspci -vvvxxxxx"],["ps -eLo","ps -eLo"],["ucx_info -c", "ucx_info -c"],["ucx_info -f","ucx_info -f"],["sysctl -a","sysctl -a"], ["netstat -anp","netstat -anp"] ,["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR_IOV", ""],["other_system_files",""],["numa_node",""],["trace","/sys/kernel/debug/tracing/trace"],["lspci -nnvvvxxxx","lspci_nnvvvxxx"],["journalctl -k -o short-monotonic","journal"],["lspci -vv", "lspci_vv"]]
 available_external_files_collection = []
 copy_under_files = [["etc_udev_rulesd", "/etc/udev/rules.d/"], ["lib_udev_rulesd", "/lib/udev/rules.d/"]]
 copy_openstack_dirs  = [["conf_nova", "/var/lib/config-data/puppet-generated/nova_libvirt"], ["conf_nuetron", "/var/lib/config-data/puppet-generated/neutron/"]]
@@ -1390,34 +1390,31 @@ def mlxcables_standard_handler():
             return 0, res
 
 def lspci_vv_handler():
-    mlnx_pci = [] # A list containing (first part of) PCI addresses of Mellanox devices
-    final_pci_to_invoke = [] # A list containing final PCI addresses to invoke
-    result = "" # Final result
-
-    st, lspci = get_status_output("lspci")
-    lspci_lines = lspci.splitlines()
-    for line in lspci_lines: # Loop in order to eliminate usage of grep in the command
-        if 'Mellanox' in line:
-            pci = line.split(':')[0]
-            if pci not in mlnx_pci:
-                mlnx_pci.append(pci)
-
-    st, lspi_tree = get_status_output("lspci -t") # lspci tree
-    split_pci_tree = re.split('(\[....:..\])', lspi_tree)
-    for mlx_pci in mlnx_pci: # Iterate over each mlnx_pci address, and check if it's linked in the pci tree. If it is, add it to invoke later.
-        for index in range(1, len(split_pci_tree)): # Need to go over each line of the pci_links paragraph, and if MLNX PCI is there, it means they're linked
-            split_pci_tree_lines = split_pci_tree[index].splitlines()
-            for line in split_pci_tree_lines:
-                if ('[' + mlx_pci + ']') in line:
-                    second_part = line.split(('[' + mlx_pci + ']'))[0]
-                    second_part = re.sub('[^\d\.]', '', second_part) # Clean the string to get the correct second part of the final PCI address to invoke
-                    first_part = split_pci_tree[index - 1].split(':')[1].replace(']','')
-                    final_pci_to_invoke.append(first_part + ':' + second_part)
-
+    mlnx_pci = [] # A list containing  PCI addresses of Mellanox devices
+    result = "Mellanox Pci devices tree \n" # Final result
+    st,res = get_status_output("lspci -nnd 15b3:")
+    if st == 0  and res :
+        lines = res.splitlines()
+        for line in lines:
+            device = line.split()[0]
+            path = os.readlink("/sys/bus/pci/devices/0000:" + device)
+            pci = path.split('/')
+            for part in pci:
+                part = part.split(":",1)
+                if len(part) > 1:
+                    part = part[1]
+                    # Define the case-insensitive regular expression pattern to match  "xx:xx.x"
+                    pattern = r'^[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}\.?[0-9a-zA-Z]*$'
+                    # Use re.match() to check if the input string matches the pattern
+                    match = re.match(pattern, part)
+                    if bool(match) and not part in mlnx_pci :
+                        mlnx_pci.append(part)
+            result += path + "\n"
+    result += "\n\n"
     result += 'lspci -vv -s <Query device that is connected to Mellanox device according to the lspci tree>' + '\n\n'
-    if not final_pci_to_invoke:
+    if not mlnx_pci:
         result += 'No devices found'
-    for pci_address in final_pci_to_invoke:
+    for pci_address in mlnx_pci:
         st, lspci_vv = get_status_output('lspci -vv -s ' + pci_address)
         if not st == 0:
             result += 'Error invoking lspci -vv -s ' + pci_address + '\n'
@@ -2487,11 +2484,6 @@ def add_command_if_exists(command):
             result = "no_cables_flag used , mlxcables commands are not executed"
             status = 0
             print_err_flag = 0
-    elif (command == "lspci -vv"):
-        result = lspci_vv_handler()
-        add_output_to_pcie_folder("lspci_vv", result)
-        status = 0
-        print_err_flag = 0
     elif (command == "mlxmcg -d"):
         result = ""
         if not no_cables_flag:
@@ -3514,6 +3506,9 @@ def add_external_file_if_exists(field_name, curr_path):
             if (status != 0):
                 err_flag = 1
                 err_command += field_name
+    elif field_name == "lspci -vv":
+        command_output = lspci_vv_handler()
+        add_ext_file_handler(field_name, curr_path, command_output)
     else:
         if is_command_allowed(field_name):
             status, command_output = get_status_output(field_name, "10")
