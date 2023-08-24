@@ -248,7 +248,7 @@ commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --
                         ,"congestion_control_parameters","ecn_configuration","lsblk", "journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
                         ,"nvidia-smi topo -m", "nvidia-smi", "lspci -tv |grep 'NVIDIA' -A7", "nvidia-smi -q -d clock", "nvidia-smi --format=csv --query-supported-clocks=gr,mem", "ib_write_bw -h | grep -i cuda", "modinfo nv_peer_mem",\
                         "/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --dtoh", "/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --htod"\
-                        , "/etc/init.d/nv_peer_mem status","/usr/local/cuda/extras/demo_suite/deviceQuery","ibstatus","ibstat","ucx_info -v", "dpkg -l net-tools | cat", "mdadm -D /dev/md*","hwloc-ls -v","systemctl list-units","nvsm dump health","lspci -nnpp -d 15b3:","lspci -nnpp -d ::0302"\
+                        , "/etc/init.d/nv_peer_mem status","/usr/local/cuda/extras/demo_suite/deviceQuery","ibstatus","ibstat","ucx_info -v", "dpkg -l net-tools | cat", "mdadm -D /dev/md*","hwloc-ls -v","systemctl list-units","nvsm dump health","lspci -nnPP -d 15b3:","lspci -nnPP -d ::0302"\
                         ,"lldptool -ti eth$i","lldptool -tin eth$i","lldptool -t -i eth$i -V APP -c","lldptool -t -i eth$i -V PFC","ip route show","ip -6 -s -s addr show"]
 available_commands_collection = [[],[]]
 available_PCIE_debugging_collection_dict = {}
