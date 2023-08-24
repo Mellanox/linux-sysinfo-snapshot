@@ -1416,12 +1416,20 @@ def mstcommand_d_handler(command,pcie_debug = False):
             if st == 0:
                 command = 'mlxlink'
             elif is_MST_installed:
-                command = 'mstlink'
+                st, mstlink_test = get_status_output('man mstlink')
+                if st == 0:
+                    command = 'mstlink'
+                else:
+                    return "could not run mstlink"
             else:
-                return "MFT and MST are not installed - could not run mlxlink / mstlink"
+                return "could not run mlxlink / mstlink"
         else:
             if is_MST_installed: # If MFT is not installed, but MST is installed
-                command = 'mstlink'
+                st, mstlink_test = get_status_output('man mstlink')
+                if st == 0:
+                    command = 'mstlink'
+                else:
+                    return "could not run mstlink"
             else:
                 return "MFT and MST are not installed - could not run mlxlink / mstlink"
     else:
@@ -5297,7 +5305,7 @@ def load_modules():
         if non_root:
             print("Running as a non-root user - You must be root to use mst tool")
         else:
-            print ('MST is not installed.')
+            print ('MFT is not installed,mst start failed')
         is_MFT_installed = False
     else:
         is_MFT_installed = True
