@@ -233,7 +233,7 @@ asap_tc_collection = ["asap_tc_information"]
 rdma_debug_collection = ["rdma_tool"]
 gpu_command_collection = ["nvidia-smi topo -m","nvidia-smi","lspci -tv |grep 'NVIDIA' -A7","nvidia-smi -q -d clock","nvidia-smi --format=csv --query-supported-clocks=gr,mem","ib_write_bw -h | grep -i cuda","modinfo nv_peer_mem"\
 ,"/usr/local/cuda/extras/demo_suite/deviceQuery","/etc/init.d/nv_peer_mem status","/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --htod"\
-,"/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --dtoh"]
+,"/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --dtoh","hwloc-ls"]
 PCIE_debugging_collection =  ["dmidecode", "performance_lspci", "lscpu", "mlxlink / mstlink","mst_commands_query_output","dmesg" ]
 ib_collection = []
 commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", \
