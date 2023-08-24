@@ -24,6 +24,7 @@ import hashlib
 import datetime
 import inspect
 import threading
+import shutil
 
 try:
     import json
@@ -110,6 +111,7 @@ blueos_flag = False
 missing_critical_info = False # True --> Sysinfo-snapshot is missing some critical debugging information
 non_root = False
 nvsm_dump_flag = False
+CANCELED_STATUS = 4
 ######################################################################################################
 #                Initialize Environment Variables
 is_ib, ib_res = no_log_status_output("which ibnetdiscover 2>/dev/null")
@@ -263,6 +265,8 @@ copy_openstack_dirs  = [["conf_nova", "/var/lib/config-data/puppet-generated/nov
 copy_openstack_files  = [["logs_nova", "/var/log/containers/nova/nova-compute.log"], ["logs_neutron", "/var/log/containers/neutron/openvswitch-agent.log"]]
 critical_failed_commands = [] # Critical commands that failed
 running_warnings = []
+#command not found 
+command_exists_dict = {}
 #commands that are part of higher chain commands ,used when generating config file
 sub_chain_commands = ["file: var/log/syslog", "file: var/log/messages", "file: var/log/boot.log", "mlnx_tune -i " + path + file_name, "ib_write_bw_test", "latency", "perf_samples", "mlxfwmanager --online-query-psid", "file: /sys/class/infiniband/*/iov", "file: /sys/class/infiniband/*/device/"]
 critical_collection = PCIE_debugging_collection # List of all critical commands
@@ -288,7 +292,7 @@ def log_command_status(parent, command, status, res, time_taken, invoke_time):
         log.write(str(invoke_time) + ":" + command + " ---- " + "PASSED, time taken: " + time_taken + "\n" )
     else:
         failed_reason = "FAILED"
-        if "not found" in res.lower() or "no such file or directory" in res.lower():
+        if "not found" in res.lower() or "no such file or directory" in res.lower() or "not invoked" in res.lower() :
             failed_reason = "NOT FOUND"
         if parent in critical_collection:
             if not missing_critical_info:
@@ -351,29 +355,49 @@ def log(f):
         return ret
     return wrap
 
+def is_command_exists(command):
+    if sys.version_info[0] ==2:
+        from distutils.spawn import find_executable
+        if find_executable(command):
+            return True
+        else:
+            return False  
+    elif sys.version_info[0] ==3:
+        import shutil 
+        if shutil.which(command) is not None:
+            return True
+        else:
+            return False
+ 
 @log
 def get_status_output(command, timeout='10'):
-    command = "timeout " + timeout + "s " + command
+    command_with_timeout = "timeout " + timeout + "s " + command
     try:
-        if " cat " in command:
-            filePath = command.split(" cat ")[1]
+        if " cat " in command_with_timeout:
+            filePath = command_with_timeout.split(" cat ")[1]
             filePath = filePath.split("|")[0].strip()
             if os.path.exists(filePath) and  (not os.access(filePath, os.R_OK)):
                 return 1, "Cant read file "  + filePath + " due to missing permissions"
             elif not os.path.exists(filePath):
-                return 1, "Cant read file "  + filePath + " due to file dose not exists" 
-        p = subprocess.Popen([command], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                return 1, "Cant read file "  + filePath + " due to file does not exists" 
+        else:
+            base_command = command.split()[0]
+            if base_command in command_exists_dict:
+                if not command_exists_dict[base_command]:
+                    return CANCELED_STATUS , "Command not invoked " + command + " due to " + base_command + " does not exists"
+            else:
+                is_exists = is_command_exists(base_command)
+                command_exists_dict[base_command] = is_exists
+                if not is_exists:
+                    return CANCELED_STATUS , "Command not invoked " + command + " due to " + base_command + " does not exists"
+        p = subprocess.Popen([command_with_timeout], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         stdout = ""
         stderr = ""
-        try :
-            stdout, stderr = p.communicate(timeout=int(timeout) +.1)
-            return p.returncode, standarize_str(stdout)
-        except subprocess.TimeoutExpired:
-            p.kill()
-            stderr = "the command " + command + " killed due to timeout (" + timeout +  "s) ended before the command end"
-            return 1, stderr
-    except:
-        error = "\nError while reading output from command - " + command + "\n"
+        stdout, stderr = p.communicate()
+        return p.returncode, standarize_str(stdout)
+    except Exception as e:
+        print(e,"err")
+        error = "\nError while reading output from command - " + command_with_timeout + "\n"
         return 1, error
 
 
@@ -489,6 +513,8 @@ def get_installed_cards_ports():
 
     st, ibstat = get_status_output("ibstat | grep " + '"' + "CA '\|Port " + '"' + " | grep -v GUID")
     if st != 0:
+        if st == CANCELED_STATUS:
+            return ibstat
         return "Could not run: ibstat"
     str_cards = ibstat.split("CA '")
     if len(str_cards) > 0:
@@ -864,7 +890,8 @@ def ethtool_all_interfaces_handler():
             if (st == 0):
                 res += ethtool_interface
             else:
-                res += "Could not run command: ethtool " + option + " " + interface
+                if st != CANCELED_STATUS:
+                    res += "Could not run command: ethtool " + option + " " + interface
             res += "\n____________\n\n"
     res += ethtool_S_output(mellanox_net_devices)
     return res
@@ -876,7 +903,7 @@ def ethtool_S_output(mellanox_net_devices):
     for interface in mellanox_net_devices:
         res += "\n\n"
         st, ethtool_interface = get_status_output(ethtool_command + " " + " -S " + interface)
-        if (st != 0):
+        if (st != 0 and st != CANCELED_STATUS ):
             ethtool_interface = "Could not run command: ethtool -S " + interface
         filtered_interface_name = interface.replace(":", "").replace(".", "")
         file = open(path + file_name + "/ethtool_S/ethtool_S_" + filtered_interface_name, 'w')
@@ -897,7 +924,7 @@ def modinfo_handler():
             modinfo += '\n---------------------------------------------------------------\n\n'
         modinfo += "modinfo " + module + " | grep 'filename\|version:'\n\n"
         st, modinfo_module = get_status_output("modinfo " + module + " | grep 'filename\|version:'")
-        if (st != 0):
+        if (st != 0 and st != CANCELED_STATUS):
             modinfo_module = "Could not run: " + '"' + " modinfo " + module + " | grep 'filename\|version:'"
         modinfo += modinfo_module + "\n"
     return modinfo
@@ -997,6 +1024,8 @@ def mlnx_qos_handler():
             if (st == 0):
                 res += mlnx_qos_interface
             else:
+                if st == CANCELED_STATUS:
+                   res += mlnx_qos_interface
                 res += "Could not run command: mlnx_qos " + option + " " + interface
             res += "\n____________\n\n"
     return res
@@ -1087,6 +1116,8 @@ def asap_handler():
             outF.write("ovs-dpctl dump-flows -m\n")
             st, res = get_status_output("ovs-dpctl dump-flows -m >> " + path + file_name + "/asap/ovs_dpctl_dump_flows", '300')
             if st != 0:
+                if st == CANCELED_STATUS:
+                    outF.write(res)
                 outF.write("Could not run: ovs-dpctl dump-flows -m")
             else:
                 is_all_failed = False
@@ -1099,6 +1130,8 @@ def asap_handler():
             outF.write("tc qdisc show\n")
             st, res = get_status_output("tc qdisc show >> " + path + file_name + "/asap/tc_qdisc_show", '300')
             if st != 0:
+                if st == CANCELED_STATUS:
+                    outF.write(res)
                 outF.write("Could not run: ovs-dpctl tc qdisc show")
             else:
                 is_all_failed = False
@@ -1112,6 +1145,8 @@ def asap_handler():
             outF.write("ovs-vsctl get Open_vSwitch . other_config\n")
             st, res = get_status_output("ovs-vsctl get Open_vSwitch . other_config >> " + path + file_name + "/asap/ovs-vsctl_get_Open_vSwitch", '300')
             if st != 0:
+                if st ==CANCELED_STATUS:
+                    outF.write(res)
                 outF.write("Could not run: ovs-vsctl get Open_vSwitch . other_config")
             else:
                 is_all_failed = False
@@ -1122,10 +1157,10 @@ def asap_handler():
 
 
     st, output = get_status_output("ovs-vsctl show | grep Bridge | awk '{$1=$1};1' | cut -d' ' -f 2", '300')
-    if "command not found" in str(output) or st!= 0:
+    if  st!= 0:
         try:
             with open(path + file_name + "/asap/ovs_dpctl_dump_flows_bridges", "a+") as outF:
-                outF.write("Could not run:ovs-vsctl show | grep Bridge | awk '{$1=$1};1' | cut -d' ' -f 2")
+                outF.write(str(output))
         except:
             err = "Could not open the file: " + file_name + "/asap/ovs_dpctl_dump_flows_bridges."
             running_warnings.append(err)
@@ -1138,6 +1173,8 @@ def asap_handler():
                         outF.write(cmd)
                         st, res = get_status_output(cmd  + " >> " + path + file_name + "/asap/ovs_dpctl_dump_flows_bridges", '300')
                         if st != 0:
+                            if st == CANCELED_STATUS:
+                                outF.write(res)
                             outF.write("Could not run: ovs-dpctl dump-flows")
                         else:
                             is_all_failed = False
@@ -1165,6 +1202,8 @@ def asap_tc_handler():
                 outF.write(cmd)
                 st, res = get_status_output(cmd + " >> " + path + file_name + "/asap_tc/ovs_tc_filter_" + interface, '300')
                 if st != 0:
+                    if st == CANCELED_STATUS:
+                        outF.write(res)
                     outF.write("Could not run: " + cmd)
                 else:
                     is_all_failed = False
@@ -1184,7 +1223,7 @@ def asap_tc_handler():
 
 def rdma_tool_handler():
     if os.path.exists("/opt/mellanox/iproute2/sbin/rdma") == False :
-        err = "--rdma_debug flag was provided but /opt/mellanox/iproute2/sbin/rdma dose not exsist. "
+        err = "--rdma_debug flag was provided but /opt/mellanox/iproute2/sbin/rdma does not exsist. "
         running_warnings.append(err)
         print(err)
         return 1 , err
@@ -1261,7 +1300,7 @@ def fwtrace_handler():
                 fwtrace += "\n****************************************\n\n"
             fwtrace += "fwtrace -d " + device + " " + option + "\n\n"
             fwtrace_st, fwtrace_device_option = get_status_output("fwtrace -d " + device + " " + option, '2m')
-            if (fwtrace_st != 0):
+            if (fwtrace_st != 0 and fwtrace_st !=  CANCELED_STATUS):
                 fwtrace_device_option = "Could not run: fwtrace -d " + device + " " + option
             fwtrace += fwtrace_device_option + "\n"
             flag = 1
@@ -1298,7 +1337,7 @@ def mlxcables_options_handler():
                 res += '\n\n****************************************\n\n'
             res += 'mlxcables -d ' + mlxcable + ' ' + option + '\n\n'
             res_st, res_mlxcable_option = get_status_output('mlxcables -d ' + mlxcable + ' ' + option)
-            if res_st != 0:
+            if res_st != 0 and st != CANCELED_STATUS:
                 res_mlxcable_option = 'Could not run: \"mlxcables -d ' + mlxcable + ' ' + option + '"'
             res += res_mlxcable_option
             flag = 1
@@ -1375,13 +1414,13 @@ def lspci_vv_handler():
                     first_part = split_pci_tree[index - 1].split(':')[1].replace(']','')
                     final_pci_to_invoke.append(first_part + ':' + second_part)
 
-    result += 'lspci -vv -s <Qyery device that is connected to Mellanox device according to the lspci tree>' + '\n\n'
+    result += 'lspci -vv -s <Query device that is connected to Mellanox device according to the lspci tree>' + '\n\n'
     if not final_pci_to_invoke:
         result += 'No devices found'
     for pci_address in final_pci_to_invoke:
         st, lspci_vv = get_status_output('lspci -vv -s ' + pci_address)
         if not st == 0:
-            result += 'Error invoking lspci -vv -s ' + pci_address
+            result += 'Error invoking lspci -vv -s ' + pci_address + '\n'
         else:
             result += 'lspci -vv -s ' + pci_address +'\n'
             result += lspci_vv + '\n' + '\n'
@@ -2061,7 +2100,7 @@ def ecn_configuration_handler():
                         outF.write("Could not open the file: " + file_name + "/ecn/config/" + filtered_indir)
                 res.append("<td><a href='ecn/config/" + filtered_indir + "'> " + filtered_indir + " </a></td>")
     else:
-        return 1, "/sys/class/net dose not exist"
+        return 1, "/sys/class/net does not exist"
     if res:
         return 0, res
     else:
@@ -2090,7 +2129,7 @@ def congestion_control_parameters_handler():
 
                 res.append("<td><a href='ecn/debug/" + filename + "'> " + indir + " </a></td>")
     else:
-        return 1, "/sys/kernel/debug/mlx5 dose not exist"
+        return 1, "/sys/kernel/debug/mlx5 does not exist"
     if res:
         return 0, res
     else:
@@ -2104,8 +2143,8 @@ def nvsm_dump_health_handler():
     # the result of the command is a tar archive maybe have to use tar commad annd append the archive contant as href
     st,result = get_status_output("nvsm dump health -tfp " + path + file_name, "6m")
     if st != 0:
-        if "command not found" in result:
-            return 1, "Could not run the command, nvsm tool is not installed"
+        if ST == CANCELED_STATUS:
+            return 1, result
         res += "Could not run the command - nvsm dump health\n\n" + result
     else:
         res += "Produced a health report as .tar archive in the given path " + path
@@ -2125,8 +2164,8 @@ def mlxreg_handler():
                 if st == 0:
                     res += result + "\n\n"
                 else:
-                    if "command not found" in result:
-                        return 1, "Could not run the command, mlxreg does not exist"
+                    if st == CANCELED_STATUS:
+                        return 1, result
                     res += "Could not run the command,mlxreg -d /dev/mst/" + device +" --reg_name ROCE_ACCL --get\n\n"
                 res += "---------------------------------------------------------\n\n"
         if not res:
@@ -2142,6 +2181,8 @@ def mlxreg_handler():
 def  se_linux_status_handler():
     st, se_linux_status = get_status_output("getenforce")
     if (st != 0):
+        if st == CANCELED_STATUS:
+            return 1, se_linux_status
         return 1, "Could not run: 'getenforce' command - SELinux is not installed in the system"
     else:
         return 0, "SELinux configuration: " + se_linux_status
@@ -2152,6 +2193,8 @@ def  se_linux_status_handler():
 def virsh_list_all_handler():
     st, virsh_list_all = get_status_output("virsh list --all")
     if st != 0:
+        if st == CANCELED_STATUS:
+            return 1, virsh_list_all
         return 1 , "Could not run 'virsh' command"
     if 'error' in virsh_list_all:
         return 2, virsh_list_all
@@ -2167,6 +2210,8 @@ def virsh_vcpupin_handler():
 
     st, virsh_list_all = get_status_output("virsh list --all")
     if st != 0:
+        if st == CANCELED_STATUS:
+             return 1,virsh_list_all
         return 1, "Could not run 'virsh' command"
     if not 'running' in virsh_list_all:
         return 2, "Could not run 'virsh vcpupin' command - There are no running KVMs"
@@ -2276,7 +2321,6 @@ def add_command_if_exists(command):
             status = 1
             result = "--ufm flag provided but /opt/ufm/scripts/vsysinfo path not exist"
             running_warnings.append(result)
-            print(result)
             print_err_flag = 1
     elif (command == "se_linux_status"):
         status, result = se_linux_status_handler()
@@ -2514,7 +2558,8 @@ def add_command_if_exists(command):
         else:
             status = 1
             print_err_flag = 1
-            result = "Could not run: " + '"' + " awk '{ print FILENAME " + '"' + "=" + '"' + " $0  }' /sys/module/mlx*/parameters/* " + '"'
+            if not result:
+                result = "Could not run: " + '"' + " awk '{ print FILENAME " + '"' + "=" + '"' + " $0  }' /sys/module/mlx*/parameters/* " + '"'
     elif(command == "USER"):
         st, result = get_status_output("logname")
         if (st == 0):
@@ -2582,7 +2627,8 @@ def add_command_if_exists(command):
         status, ip_link_output = get_status_output("ip link ls type team")
         if (status != 0):
             print_err_flag = 1
-            result = "Could not run: " + '"' + "ip link ls type team" + '"'
+            if not result:
+                result = "Could not run: " + '"' + "ip link ls type team" + '"'
         team_interfaces = re.findall(r'.*?\:(.*)\: <.*',ip_link_output)
         if team_interfaces:
             for team in team_interfaces:
@@ -2600,7 +2646,8 @@ def add_command_if_exists(command):
                 status, teamdctl_result = get_status_output(run_command)
                 if (status != 0):
                     print_err_flag = 1
-                    teamdctl_result = "Could not run: " + '"' + run_command + '"'
+                    if not teamdctl_result:
+                        teamdctl_result = "Could not run: " + '"' + run_command + '"'
                 result += teamdctl_result + '\n\n'
         else:
             status = 1
@@ -2610,7 +2657,8 @@ def add_command_if_exists(command):
         status, result = get_status_output(command)
         if status != 0:
             print_err_flag = 1
-            result = "Could not run: " + '"' + command + '"'
+            if not result:
+                result = "Could not run: " + '"' + command + '"'
         else:
             print_err_flag = 0
     elif ( command == "snap_rpc.py controller_list" or command == "snap_rpc.py emulation_functions_list" or command == "virtnet query --all"):
@@ -2643,9 +2691,10 @@ def add_command_if_exists(command):
         # invoking regular command
         print_err_flag = 0
         status, result = get_status_output(command)
-        if (status != 0 and not command.startswith("service")):
+        if (status != 0 and not command.startswith("service") ):
             if not (iscsiadm_st == 0 and command.startswith("iscsiadm")):
-                result = "Could not run: " + '"' + command + '"'
+                if not result:
+                    result = "Could not run: " + '"' + command + '"'
                 print_err_flag = 1
 
     # if iscsiadm --version command exists, add all isciadm commands to the available ones
@@ -3774,6 +3823,8 @@ def ip_link_show_devices_handler():
 def lspci_vf_handler():
     st, lspci = get_status_output("lspci -tv ")
     if st != 0:
+        if st == CANCELED_STATUS:
+            return st,lspci
         return st, "Could not run: lspci -tv "
 
     lspci = lspci.splitlines()
@@ -3806,7 +3857,7 @@ def add_sriov_command_if_exists(command):
     else:
         # invoking regular command
         status, result = get_status_output(command)
-        if status != 0:
+        if status != 0 and status != CANCELED_STATUS:
             result = "Could not run: " + '"' + command + '"'
 
     # add command to server commands dictionaty only if exists
