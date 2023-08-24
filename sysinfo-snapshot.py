@@ -1270,6 +1270,10 @@ def ibdev2pcidev_handler():
             device_pci_mapping = device_mapping_split[-1] #Now it will be mlx5_0 --> 0000:86:00.0 (The last part only)
             port_mapping = device + " ==> " + device_pci_mapping
             final_mapping += port_mapping
+            cmd = "ls /sys/class/infiniband/"+ device.strip() + "/device" + "/infiniband_verbs/"
+            st2, uverbs_mapping = get_status_output(cmd)
+            if st2 == 0:
+           	    final_mapping += " ==> " + uverbs_mapping
             final_mapping += "\n"
     return final_mapping
 
