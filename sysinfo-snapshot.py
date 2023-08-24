@@ -232,12 +232,12 @@ asap_collection = ["asap_parameters"]
 asap_tc_collection = ["asap_tc_information"]
 rdma_debug_collection = ["rdma_tool"]
 gpu_command_collection = ["nvidia-smi topo -m","nvidia-smi","lspci -tv |grep 'NVIDIA' -A7","nvidia-smi -q -d clock","nvidia-smi --format=csv --query-supported-clocks=gr,mem","ib_write_bw -h | grep -i cuda","modinfo nv_peer_mem"\
-,"/usr/local/cuda/extras/demo_suite/deviceQuery","/etc/init.d/nv_peer_mem status","/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --htod"\
-,"/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --dtoh","hwloc-ls"]
+,"/usr/local/cuda/extras/demo_suite/deviceQuery","/etc/init.d/nv_peer_mem status"\
+,"bandwidthTest","hwloc-ls"]
 PCIE_debugging_collection =  ["dmidecode", "performance_lspci", "lscpu", "mlxlink / mstlink","mst_commands_query_output","dmesg" ]
 ib_collection = []
 commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", \
-                        "df -lh", "/opt/mellanox/ethtool/sbin/ethtool --version", "ethtool_version", "ethtool_all_interfaces", "fdisk -l", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", \
+                        "df -lh", "mlnx_ethtool_version", "ethtool_version", "ethtool_all_interfaces", "fdisk -l", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", \
                         "initctl list", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod",  "lspci -tv", \
                         "mount", "mst_commands_query_output", "asap_parameters", "asap_tc_information","rdma_tool",  "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info",  "ip route show table all", "service --status-all", \
                         "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all",  "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname", \
@@ -247,8 +247,8 @@ commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --
                         "ufm_logs", "virsh version","virsh list --all", "virsh vcpupin", "sys_class_infiniband_ib_paameters", "sys_class_net_ecn_ib","roce counters","route -n","numastat -n","NetworkManager --print-config","networkManager_system_connections","USER","mlxreg -d --reg_name ROCE_ACCL --get"\
                         ,"congestion_control_parameters","ecn_configuration","lsblk", "journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
                         ,"nvidia-smi topo -m", "nvidia-smi", "lspci -tv |grep 'NVIDIA' -A7", "nvidia-smi -q -d clock", "nvidia-smi --format=csv --query-supported-clocks=gr,mem", "ib_write_bw -h | grep -i cuda", "modinfo nv_peer_mem",\
-                        "/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --dtoh", "/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --htod"\
-                        , "/etc/init.d/nv_peer_mem status","/usr/local/cuda/extras/demo_suite/deviceQuery","ibstatus","ibstat","ucx_info -v", "dpkg -l net-tools | cat", "mdadm -D /dev/md*","hwloc-ls -v","systemctl list-units","nvsm dump health","lspci -nnPP -d 15b3:","lspci -nnPP -d ::0302"\
+                        "bandwidthTest"\
+                        , "/etc/init.d/nv_peer_mem status","cuda_deviceQuery","ibstatus","ibstat","ucx_info -v", "dpkg -l net-tools | cat", "mdadm -D /dev/md*","hwloc-ls -v","systemctl list-units","nvsm dump health","lspci -nnPP -d 15b3:","lspci -nnPP -d ::0302"\
                         ,"lldptool -ti eth$i","lldptool -tin eth$i","lldptool -t -i eth$i -V APP -c","lldptool -t -i eth$i -V PFC","ip route show","ip -6 -s -s addr show"]
 available_commands_collection = [[],[]]
 available_PCIE_debugging_collection_dict = {}
@@ -2588,6 +2588,34 @@ def add_command_if_exists(command):
             status = 1
             print_err_flag = 1
             result = "could not run : logname"
+    elif (command == "bandwidthTest"):
+        st, result = get_status_output("/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --dtoh", "/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --htod")
+        if (st == 0):
+            status = 0
+            print_err_flag = 0
+        else:
+            status = 1
+            print_err_flag = 1
+            result = "could not run : /usr/local/cuda/extras/demo_suite/bandwidthTest"
+    elif (command == "cuda_deviceQuery"):
+        st, result = get_status_output("/usr/local/cuda/extras/demo_suite/deviceQuery")
+        if (st == 0):
+            status = 0
+            print_err_flag = 0
+        else:
+            status = 1
+            print_err_flag = 1
+            result = "could not run :  /usr/local/cuda/extras/demo_suite/deviceQuery"   
+            
+    elif (command == "mlnx_ethtool_version"):
+        st, result = get_status_output("/opt/mellanox/ethtool/sbin/ethtool --version")
+        if (st == 0):
+            status = 0
+            print_err_flag = 0
+        else:
+            status = 1
+            print_err_flag = 1
+            result = "could not run : /opt/mellanox/ethtool/sbin/ethtool --version"  
     elif (command == "sysclass_IB_modules_parameters"):
         status, result = yy_ib_modules_parameters_handler()
         if(status == 0):
