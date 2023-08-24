@@ -3232,11 +3232,13 @@ def add_ext_file_handler(field_name, out_file_name, command_output):
 def add_external_file_if_exists(field_name, curr_path):
     command_output = ""
     err_flag = 0
-    err_command = "No '" + field_name + "' External File\nReason: Couldn't find command: "
-    if (field_name.startswith("var/log")):
+    err_command = "No '" + field_name + "' External File\nReason: Couldn't find command/file: "
+    if (field_name.startswith("/var/log")):
         if is_command_allowed("file: " + curr_path):
-            status, command_output = get_status_output("cat /" + curr_path)
+            status, command_output = get_status_output("cat " + curr_path)
             if (status == 0 and command_output):
+                if field_name.startswith('/'):
+                    field_name = field_name[1:]
                 field_name = field_name.replace('/','_')
                 filtered_field_name = filter_file_name(field_name)
                 add_ext_file_handler(field_name, filtered_field_name, command_output)
@@ -3668,10 +3670,10 @@ def arrange_external_files_section():
         for file in var_log_files:
             if all_var_log_flag :
                 if 'syslog' in file  or 'messages' in file or file == 'boot.log' or 'dmesg' in file or "kern.log" in file:
-                    add_external_file_if_exists('var/log/'+ file,'var/log/'+ file)
+                    add_external_file_if_exists('/var/log/'+ file,'/var/log/'+ file)
             else:
                 if file == 'syslog' or file == 'messages' or file == 'boot.log' or file == 'dmesg':
-                    add_external_file_if_exists('var/log/'+ file,'var/log/'+ file)
+                    add_external_file_if_exists('/var/log/'+ file,'/var/log/'+ file)
     # add external files if exist to the provided external section e.g. "kernel config"
     for pair in external_files_collection:
         if (pair[0] in pcie_collection) :
