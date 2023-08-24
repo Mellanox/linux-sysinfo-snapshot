@@ -207,6 +207,7 @@ fsdump_flag = False
 no_fw_regdumps_flag = False
 no_mstconfig_flag = False
 no_cables_flag = False
+all_var_log_flag = False
 if "--no_ib" in sys.argv:
     no_ib_flag = True
 #perf_flag = False, means not to include more performance commands/function like ib_write_bw and ib_write_lat
@@ -3665,8 +3666,12 @@ def arrange_external_files_section():
     if st == 0:
         var_log_files = var_log_files.splitlines()
         for file in var_log_files:
-            if 'syslog' in file  or 'messages' in file or file == 'boot.log' or 'dmesg' in file or file == "journal"  or "kern.log" in file:
-                add_external_file_if_exists('var/log/'+ file,'var/log/'+ file)
+            if all_var_log_flag :
+                if 'syslog' in file  or 'messages' in file or file == 'boot.log' or 'dmesg' in file or "kern.log" in file:
+                    add_external_file_if_exists('var/log/'+ file,'var/log/'+ file)
+            else:
+                if file == 'syslog' or file == 'messages' or file == 'boot.log' or file == 'dmesg':
+                    add_external_file_if_exists('var/log/'+ file,'var/log/'+ file)
     # add external files if exist to the provided external section e.g. "kernel config"
     for pair in external_files_collection:
         if (pair[0] in pcie_collection) :
@@ -5614,6 +5619,7 @@ def update_flags(args):
     global no_fw_regdumps_flag
     global no_cables_flag
     global no_mstconfig_flag
+    global all_var_log_flag
     global json_flag
     global verbose_flag
     global verbose_count
@@ -5690,6 +5696,8 @@ def update_flags(args):
         no_cables_flag = True
     if (args.no_mstconfig):
         no_mstconfig_flag = True
+    if (args.all_var_log):
+        all_var_log_flag = True
     if (args.perf):
         perf_flag = True
     if (args.ibdiagnet_ext):
@@ -5834,6 +5842,7 @@ def get_parsed_args():
         parser.add_option("--fsdump", help="add fsdump firmware command to the output.", action='store_true')
         parser.add_option("--no_fw_regdumps", help="disable regdumps firmware command.", action='store_true')
         parser.add_option("--no_mstconfig", help="disable mstconfig firmware command.", action='store_true')
+        parser.add_option("--all_var_log", help="collect all logs in /var/log/ dir", action='store_true')
         parser.add_option("--no_cables", help="disable mlxlink, mget_temp, mlxmcg command that is related to cables.", action='store_true')
         parser.add_option("--mtusb", help="add I2C mstdump files to the output.", action='store_true')
         parser.add_option("--ibdiagnet", help="add ibdiagnet command to the output.", action='store_true')
@@ -5876,6 +5885,7 @@ def get_parsed_args():
         parser.add_argument("--no_fw_regdumps", help="disable regdumps firmware command.", action='store_true')
         parser.add_argument("--no_mstconfig", help="disable mstconfig firmware command.", action='store_true')
         parser.add_argument("--no_cables", help="disable mlxlink, mget_temp, mlxmcg command that is related to cables.", action='store_true')
+        parser.add_argument("--all_var_log", help="collect all logs in /var/log/ dir ", action='store_true')
         parser.add_argument("--mtusb", help="add I2C mstdump files to the output.", action='store_true')
         parser.add_argument("--with_inband", help="add in-band cable info to the output.", action='store_true')
         parser.add_argument("--ibdiagnet_ext", help="add ibdiagnet ext command to the output.", action='store_true')
