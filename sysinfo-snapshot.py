@@ -205,6 +205,8 @@ with_inband_flag = False
 # If check_fw flag is true it runs online check for the latest fw for this psid
 fsdump_flag = False
 no_fw_regdumps_flag = False
+no_mstconfig_flag = False
+no_cables_flag = False
 if "--no_ib" in sys.argv:
     no_ib_flag = True
 #perf_flag = False, means not to include more performance commands/function like ib_write_bw and ib_write_lat
@@ -1550,14 +1552,17 @@ def general_fw_command_output(command, card, timeout = '80'):
     elif command == 'fwconfig':
         if (not is_MFT_installed and not is_MST_installed):
             return(1, fwconfig_error, tool_error)
-        st, fw_query = get_status_output(commands_dict['fwconfig'][0], timeout)
-        if st == 0:
-            return(0, fw_query, 'mst')
-        else:
-            st, fw_query = get_status_output(commands_dict['fwconfig'][1], timeout)
+        if(not no_mstconfig_flag):
+            st, fw_query = get_status_output(commands_dict['fwconfig'][0], timeout)
             if st == 0:
-                return(0, fw_query, 'mft')
-            return(1, command_error, tool_error)
+                return(0, fw_query, 'mst')
+            else:
+                st, fw_query = get_status_output(commands_dict['fwconfig'][1], timeout)
+                if st == 0:
+                    return(0, fw_query, 'mft')
+                return(1, command_error, tool_error)
+        else:
+            return(1, "no_mstconfig_flag is used, the mstconfig commands are not executed.", tool_error)   
     elif command =='mlxdump':
         if (not is_MFT_installed ):
             return(1, mlxdump_error, tool_error)
@@ -1576,6 +1581,7 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
         if tool_used == 'mst':
             try:
                 f = open(path + file_name + "/firmware/mstregdump_" + filtered_file_name, "w+")
+                f.write("mstregdump " + card + "\n")
                 f.write(res + "\n")
                 f.close()
                 return ("firmware/mstregdump_" + filtered_file_name, "mst", 0)
@@ -1588,6 +1594,7 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
         elif tool_used =='mft':
             try:
                 f = open(path + file_name + "/firmware/mstdump_" + filtered_file_name, "w+")
+                f.write("mstdump " + card + "\n")
                 f.write(res + "\n")
                 f.close()
                 return ("firmware/mstdump_" + filtered_file_name, "mft", 0)
@@ -1614,6 +1621,7 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
         if tool_used == 'mst':
             try:
                 f = open(path + file_name + "/firmware/mstconfig_" + filtered_file_name, "w+")
+                f.write("mstconfig -d " + card + " -e  q" + "\n")
                 f.write(res + "\n")
                 f.close()
                 return ("firmware/mstconfig_" + filtered_file_name, "mst", 0)
@@ -1626,6 +1634,7 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
         elif tool_used =='mft':
             try:
                 f = open(path + file_name + "/firmware/mlxconfig_" + filtered_file_name, "w+")
+                f.write("mlxconfig -d " + card + " -e  q" + "\n")
                 f.write(res + "\n")
                 f.close()
                 return ("firmware/mlxconfig_" + filtered_file_name, "mft", 0)
@@ -1658,6 +1667,7 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
         if tool_used == 'mst':
             try:
                 f = open(path + file_name + "/firmware/mstflint_" + filtered_file_name, "w+")
+                f.write("mstflint -d " + card + flint_flags + "\n")
                 f.write(res + "\n")
                 f.close()
                 return ("firmware/mstflint_" + filtered_file_name, "mst", 0)
@@ -1670,6 +1680,7 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
         elif tool_used == 'mft':
             try:
                 f = open(path + file_name + "/firmware/flint_" + filtered_file_name, "w+")
+                f.write("flint -d " + card + flint_flags + "\n")
                 f.write(res + "\n")
                 f.close()
                 return ("firmware/flint_" + filtered_file_name, "mft", 0)
@@ -1681,13 +1692,13 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
                     return("Error in creating new file in the system", "Error in creating new file in the system", 1)
         else:
             try:
-                f = open(path + file_name + "/firmware/flint_" + filtered_file_name, "w+")
-                f.write("Could not run mstflint AND flint!")
+                f = open(path + file_name + "/firmware/mstflint_flint_" + filtered_file_name, "w+")
+                f.write("Could not run mstflint -d " + card + flint_flags + "and flint -d " + card + flint_flags  + '\n')
                 f.close()
                 return ("firmware/flint_" + filtered_file_name, "mft", 0)
             except:
                 with open(path+file_name+"/err_messages/dummy_functions", 'a') as f:
-                    f.write("The full command is: mstflint -d " + card + flint_flags + flint_flags + "\n")
+                    f.write("The full command is: mstflint -d " + card + flint_flags +  "\n")
                     f.write("Error in creating new file in the system")
                     f.write("\n\n")
                     return("Error in creating new file in the system", "Error in creating new file in the system", 1)
@@ -1695,6 +1706,7 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
         st, res, tool_used = general_fw_command_output(command, card, timeout)
         try:
             f = open(path + file_name + "/firmware/mlxdump_" + filtered_file_name +"_pcie_uc", "w+")
+            f.write(" mlxdump -d " + card + " pcie_uc" + "\n")
             f.write(res + "\n")
             f.close()
             return ("firmware/mlxdump_" + filtered_file_name +"_pcie_uc", "mft", 0)
@@ -1722,7 +1734,6 @@ def generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output):
         else:
             mstregdump_out.append("<td><a href=\""+ output_file +"\">mlxconfig_" + output + "</a></td><br />")
         time.sleep(sleep_period)
-
     output = card
     filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
     output_file, tool_used, is_error = general_fw_commands_handler('fwflint_q', card, filtered_file_name)
@@ -1763,15 +1774,11 @@ def generate_mst_dumps(card, sleep_period, mstregdump_out, mst_status_output,tem
         filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
         output_file, tool_used, is_error = general_fw_commands_handler('fwdump', card, filtered_file_name)
         if is_error == 0:
-            if(not no_fw_regdumps_flag):
-                if tool_used == 'mst':
-                    mstregdump_out.append("<td><a href=\""+ output_file +"\">mstregdump_" + output + "</a></td><br />")
-                else:
-                    mstregdump_out.append("<td><a href=\""+ output_file +"\">mstdump_" + output + "</a></td><br />")
-                time.sleep(sleep_period)
+            if tool_used == 'mst':
+                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstregdump_" + output + "</a></td><br />")
             else:
-                mstregdump_out.append("<td>no_fw_regdumps_flag is used, the fw regdump commands are not executed.</td><br />")
-                break
+                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstdump_" + output + "</a></td><br />")
+            time.sleep(sleep_period)
 #**********************************************************
 #        mst_commands_query_output Handlers
 def mst_func_handler():
@@ -2391,13 +2398,18 @@ def add_command_if_exists(command):
         status = 0
         print_err_flag = 0
     elif (command == "mlxcables"):
-        st, result = mlxcables_standard_handler()
-        if st == 0 and with_inband_flag:
-            command_is_string = False
-        if st != 0:
-            status = 1
-            print_err_flag = 1
+        if not no_cables_flag:
+            st, result = mlxcables_standard_handler()
+            if st == 0 and with_inband_flag:
+                command_is_string = False
+            if st != 0:
+                status = 1
+                print_err_flag = 1
+            else:
+                status = 0
+                print_err_flag = 0
         else:
+            result = "no_cables_flag used , mlxcables commands are not executed"
             status = 0
             print_err_flag = 0
     elif (command == "lspci -vv"):
@@ -2406,16 +2418,28 @@ def add_command_if_exists(command):
         status = 0
         print_err_flag = 0
     elif (command == "mlxmcg -d"):
-        result = mstcommand_d_handler('mlxmcg')
+        result = ""
+        if not no_cables_flag:
+            result = mstcommand_d_handler('mlxmcg')
+        else:
+            result = "no_cables_flag used , mlxmcg commands are not executed"
         status = 0
         print_err_flag = 0
     elif (command ==  "mlxlink / mstlink"):
-        result = mstcommand_d_handler('mlxlink / mstlink')
-        # add_output_to_pcie_debug_dict("mlxlink_mstlink", result)
+        result = ""
+        if not no_cables_flag:
+            result = mstcommand_d_handler('mlxlink / mstlink')
+            # add_output_to_pcie_debug_dict("mlxlink_mstlink", result)
+        else:
+            result = "no_cables_flag used , mlxlink / mstlink commands are not executed"
         status = 0
         print_err_flag = 0
     elif (command == "mget_temp_query"):
-        result = mstcommand_d_handler('mget_temp')
+        result = ""
+        if not no_cables_flag:
+            result = mstcommand_d_handler('mget_temp')
+        else:
+            result = "no_cables_flag used , mget_temp commands are not executed"
         status = 0
         print_err_flag = 0
     elif ("mst_commands_query_output" in command):
@@ -3240,14 +3264,18 @@ def add_external_file_if_exists(field_name, curr_path):
                 err_flag = 1
                 err_command += "cat " + curr_path
     elif (field_name == "mlxcables --DDM/--dump"):
-        if is_command_allowed("mlxcables --DDM/--dump"):
-            st, command_output = mlxcables_options_handler()
-            if st != 0:
-                err_flag = 1
-                err_command += "mlxcables --DDM/--dump"
-            else:
-                external_files_dict[field_name] = "<td><a href=" + curr_path + ">" + field_name + "</a></td>"
-                available_external_files_collection.append([field_name, curr_path])
+        if not no_cables_flag:
+            if is_command_allowed("mlxcables --DDM/--dump"):
+                st, command_output = mlxcables_options_handler()
+                if st != 0:
+                    err_flag = 1
+                    err_command += "mlxcables --DDM/--dump"
+                else:
+                    external_files_dict[field_name] = "<td><a href=" + curr_path + ">" + field_name + "</a></td>"
+                    available_external_files_collection.append([field_name, curr_path])
+        else:
+            err_flag = 1
+            err_command += "no_cable_flag used,mlxcables --DDM/--dump command are not executed"
     elif (field_name == "config.gz"):
         if is_command_allowed("file : /proc/config.gz"):
            if(os.path.isfile('/proc/config.gz')):
@@ -5357,8 +5385,12 @@ def generate_pcie_debug_info():
         elif "dmidecode" in command:
             get_dmidecode_info()
         elif "mlxlink / mstlink" in command:
-            result = mstcommand_d_handler('mlxlink / mstlink',pcie_debug = True)
-            # add_output_to_pcie_debug_dict("mlxlink_mstlink", result)
+            result = ""
+            if not no_cables_flag:
+                result = mstcommand_d_handler('mlxlink / mstlink',pcie_debug = True)
+                # add_output_to_pcie_debug_dict("mlxlink_mstlink", result)
+            else:
+                result = "no_cable_flag used, mlxlink / mstlink commands are not executed"
         elif "dmesg" in command:
             add_external_file_if_exists("dmesg -T", "dmesg")
         elif "mst_commands_query_output" in command:
@@ -5418,7 +5450,8 @@ def generate_output():
     #invoke_command(['mkdir', path + file_name + "/firmware"])
     no_log_status_output("mkdir " + path + file_name + "/pcie_files")
     #cables:
-    no_log_status_output("mkdir " + path + file_name + "/cables")
+    if not no_cables_flag:
+        no_log_status_output("mkdir " + path + file_name + "/cables")
     if asap_flag:
         no_log_status_output("mkdir " + path + file_name + "/asap")
         #invoke_command(['mkdir', path + file_name + "/asap"])
@@ -5480,9 +5513,10 @@ def generate_output():
     arrange_dicts()
     #generate sub chain commands in config file
     if generate_config_flag:
-        related_flag = "no_fw/no_fw_regdumps_flag"
-        config_key = "mstregdump/mstdump "
-        is_command_allowed(config_key,related_flag)
+        command_flag_map = [["mstregdump/mstdump","no_fw/no_fw_regdumps"],["mstconfig/mlxconfig","no_mstconfig"],["mget_temp","no_cables"]\
+        ,["mlxlink / mstlink","no_cables"],["mlxmcg","no_cables"]]
+        for command in command_flag_map:
+            is_command_allowed(command[0],command[1])
         for command in sub_chain_commands:
             related_flag = ""
             if command == "ibdiagnet":
@@ -5578,6 +5612,8 @@ def update_flags(args):
     global pcie_debug_flag
     global fsdump_flag
     global no_fw_regdumps_flag
+    global no_cables_flag
+    global no_mstconfig_flag
     global json_flag
     global verbose_flag
     global verbose_count
@@ -5650,6 +5686,10 @@ def update_flags(args):
         fsdump_flag = True
     if (args.no_fw_regdumps):
         no_fw_regdumps_flag = True
+    if (args.no_cables):
+        no_cables_flag = True
+    if (args.no_mstconfig):
+        no_mstconfig_flag = True
     if (args.perf):
         perf_flag = True
     if (args.ibdiagnet_ext):
@@ -5793,6 +5833,8 @@ def get_parsed_args():
         parser.add_option("--no_fw", help="do not add firmware commands to the output.", action='store_true')
         parser.add_option("--fsdump", help="add fsdump firmware command to the output.", action='store_true')
         parser.add_option("--no_fw_regdumps", help="disable regdumps firmware command.", action='store_true')
+        parser.add_option("--no_mstconfig", help="disable mstconfig firmware command.", action='store_true')
+        parser.add_option("--no_cables", help="disable mlxlink, mget_temp, mlxmcg command that is related to cables.", action='store_true')
         parser.add_option("--mtusb", help="add I2C mstdump files to the output.", action='store_true')
         parser.add_option("--ibdiagnet", help="add ibdiagnet command to the output.", action='store_true')
         parser.add_option("--ibdiagnet_ext", help="add ibdiagnet ext command to the output.", action='store_true')
@@ -5832,6 +5874,8 @@ def get_parsed_args():
         parser.add_argument("--no_fw", help="do not add firmware commands to the output.", action='store_true')
         parser.add_argument("--fsdump", help="add fsdump firmware command to the output.", action='store_true')
         parser.add_argument("--no_fw_regdumps", help="disable regdumps firmware command.", action='store_true')
+        parser.add_argument("--no_mstconfig", help="disable mstconfig firmware command.", action='store_true')
+        parser.add_argument("--no_cables", help="disable mlxlink, mget_temp, mlxmcg command that is related to cables.", action='store_true')
         parser.add_argument("--mtusb", help="add I2C mstdump files to the output.", action='store_true')
         parser.add_argument("--with_inband", help="add in-band cable info to the output.", action='store_true')
         parser.add_argument("--ibdiagnet_ext", help="add ibdiagnet ext command to the output.", action='store_true')
