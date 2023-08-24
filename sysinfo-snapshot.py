@@ -5347,20 +5347,15 @@ def load_modules():
     global are_inband_cables_loaded
     global mst_devices_exist
 
-    st, mst_start = get_status_output('mst start')
+    st, output = get_status_output('flint --version')
     if st != 0:
         if non_root:
             print("Running as a non-root user - You must be root to use mst tool")
         else:
-            print ('MFT is not installed,mst start failed')
+            print ('MFT is not installed,flint --version failed')
         is_MFT_installed = False
     else:
         is_MFT_installed = True
-    if 'already' in mst_start:
-        driver_required_loading = False
-    else:
-        driver_required_loading = True
-
     os.system("mst start > /dev/null 2>&1")
     if with_inband_flag:
         os.system("mst cable add --with_ib > /dev/null 2>&1")
