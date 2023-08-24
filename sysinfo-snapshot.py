@@ -146,7 +146,7 @@ not_present = "Not Present"
 present = "Present"
 perf_status_dict = {}
 perf_val_dict = {}
-perf_external_files_collection = [["mlnx_tune -r -i "+ path + file_name, "mlnx_tune_r"]]
+perf_external_files_collection = [["mlnx_tune -r -i ", "mlnx_tune_r"]]
 perf_samples = {}
 bandwidth = {}
 latency = {}
@@ -232,33 +232,33 @@ asap_collection = ["asap_parameters"]
 asap_tc_collection = ["asap_tc_information"]
 rdma_debug_collection = ["rdma_tool"]
 gpu_command_collection = ["nvidia-smi topo -m","nvidia-smi","lspci -tv |grep 'NVIDIA' -A7","nvidia-smi -q -d clock","nvidia-smi --format=csv --query-supported-clocks=gr,mem","ib_write_bw -h | grep -i cuda","modinfo nv_peer_mem"\
-,"/usr/local/cuda/extras/demo_suite/deviceQuery","/etc/init.d/nv_peer_mem status","/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --htod"\
-,"/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --dtoh"]
+,"/usr/local/cuda/extras/demo_suite/deviceQuery","/etc/init.d/nv_peer_mem status"\
+,"bandwidthTest","hwloc-ls"]
 PCIE_debugging_collection =  ["dmidecode", "performance_lspci", "lscpu", "mlxlink / mstlink","mst_commands_query_output","dmesg" ]
 ib_collection = []
 commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", \
-                        "df -lh", "/opt/mellanox/ethtool/sbin/ethtool --version", "ethtool_version", "ethtool_all_interfaces", "fdisk -l", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", \
-                        "initctl list", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod",  "lspci -tv", "lspci -vv", \
+                        "df -lh", "mlnx_ethtool_version", "ethtool_version", "ethtool_all_interfaces", "fdisk -l", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", \
+                        "initctl list", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod",  "lspci -tv", \
                         "mount", "mst_commands_query_output", "asap_parameters", "asap_tc_information","rdma_tool",  "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info",  "ip route show table all", "service --status-all", \
                         "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all",  "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname", \
-                        "yy_MLX_modules_parameters", "sysclass_IB_modules_parameters", "proc_net_bonding_files", "sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", \
+                        "yy_MLX_modules_parameters", "sysclass_IB_modules_parameters", "proc_net_bonding_files","Mellanox_Nvidia_pci_buses" ,"sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", \
                         "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "ip -6 addr show", "ip -6 route show", "modinfo", "show_pretty_gids", "flint -v",  "mstflint -v","dkms status",\
                         "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status", "mlxlink / mstlink", "mget_temp_query", "mlnx_qos_handler", "devlink_handler", "se_linux_status", \
                         "ufm_logs", "virsh version","virsh list --all", "virsh vcpupin", "sys_class_infiniband_ib_paameters", "sys_class_net_ecn_ib","roce counters","route -n","numastat -n","NetworkManager --print-config","networkManager_system_connections","USER","mlxreg -d --reg_name ROCE_ACCL --get"\
                         ,"congestion_control_parameters","ecn_configuration","lsblk", "journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
                         ,"nvidia-smi topo -m", "nvidia-smi", "lspci -tv |grep 'NVIDIA' -A7", "nvidia-smi -q -d clock", "nvidia-smi --format=csv --query-supported-clocks=gr,mem", "ib_write_bw -h | grep -i cuda", "modinfo nv_peer_mem",\
-                        "/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --dtoh", "/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --htod"\
-                        , "/etc/init.d/nv_peer_mem status","/usr/local/cuda/extras/demo_suite/deviceQuery","ibstatus","ibstat","ucx_info -v", "dpkg -l net-tools | cat", "mdadm -D /dev/md*","hwloc-ls -v","systemctl list-units","nvsm dump health","lspci -nnpp -d 15b3:","lspci -nnpp -d ::0302"\
+                        "bandwidthTest"\
+                        , "/etc/init.d/nv_peer_mem status","cuda_deviceQuery","ibstatus","ibstat","ucx_info -v", "dpkg -l net-tools | cat", "mdadm -D /dev/md*","hwloc-ls -v","systemctl list-units","nvsm dump health","lspci -nnPP -d 15b3:","lspci -nnPP -d ::0302"\
                         ,"lldptool -ti eth$i","lldptool -tin eth$i","lldptool -t -i eth$i -V APP -c","lldptool -t -i eth$i -V PFC","ip route show","ip -6 -s -s addr show"]
 available_commands_collection = [[],[]]
 available_PCIE_debugging_collection_dict = {}
 fabric_commands_collection = [ "ib_mc_info_show", "sm_version", "Multicast_Information", "perfquery_cards_ports"]
 fabric_multi_sub_commands_collection = ["ibdiagnet", "ib_find_bad_ports", "ib_find_disabled_ports", "ib_topology_viewer", "ibhosts", "ibswitches", "sminfo", "sm_status", "sm_master_is", "ib_switches_FW_scan"]
 available_fabric_commands_collection = []
-internal_files_collection = ["/sys/devices/system/clocksource/clocksource0/current_clocksource", "/sys/fs/cgroup/net_prio/net_prio.ifpriomap", "/etc/opensm/partitions.conf","/etc/opensm/opensm.conf", "/etc/default/mlnx_snap","/etc/modprobe.d/vxlan.conf", "/etc/security/limits.conf", "/boot/grub/grub.cfg","/boot/grub2/grub.cfg","/boot/grub/grub.conf","/boot/grub2/grub.conf", "/boot/grub/menu.lst","/boot/grub2/menu.lst","/etc/default/grub", "/etc/host.conf", "/etc/hosts", "/etc/hosts.allow", "/etc/hosts.deny", "/etc/issue", "/etc/modprobe.conf","/etc/udev/udev.conf" ,"/etc/ntp.conf", "/etc/resolv.conf", "/etc/sysctl.conf", "/etc/tuned.conf","/etc/dhcp/dhclient.conf","/etc/yum.conf","/etc/bluefield_version", "/proc/cmdline", "/proc/cpuinfo", "/proc/devices", "/proc/diskstats", "/proc/dma", "/proc/meminfo", "/proc/modules", "/proc/mounts", "/proc/net/dev_mcast", "/proc/net/igmp", "/proc/partitions", "/proc/stat", "/proc/sys/net/ipv4/igmp_max_memberships", "/proc/sys/net/ipv4/igmp_max_msf","/proc/uptime", "/proc/version", "/etc/rdma/rdma.conf","/etc/systemd/system/mlnx_interface_mgr@.service","/etc/systemd/system/sysinit.target.wants/openibd.service","/etc/systemd/system/network-online.target.wants/NetworkManager-wait-online.service", "/proc/net/softnet_stat", "/proc/buddyinfo", "/proc/slabinfo", "/proc/pagetypeinfo","/etc/iproute2/rt_tables"]
+internal_files_collection = ["/sys/devices/system/clocksource/clocksource0/current_clocksource", "/sys/fs/cgroup/net_prio/net_prio.ifpriomap", "/etc/opensm/partitions.conf","/etc/opensm/opensm.conf", "/etc/default/mlnx_snap","/etc/modprobe.d/vxlan.conf", "/etc/security/limits.conf", "/boot/grub/grub.cfg","/boot/grub2/grub.cfg","/boot/grub/grub.conf","/boot/grub2/grub.conf", "/boot/grub/menu.lst","/boot/grub2/menu.lst","/etc/default/grub", "/etc/host.conf", "/etc/hosts", "/etc/hosts.allow", "/etc/hosts.deny", "/etc/issue", "/etc/modprobe.conf","/etc/udev/udev.conf" ,"/etc/ntp.conf", "/etc/resolv.conf", "/etc/sysctl.conf", "/etc/tuned.conf","/etc/dhcp/dhclient.conf","/etc/yum.conf","/etc/bluefield_version", "/proc/cmdline", "/proc/cpuinfo", "/proc/devices", "/proc/diskstats", "/proc/dma", "/proc/meminfo", "/proc/modules", "/proc/mounts", "/proc/net/dev_mcast", "/proc/net/igmp", "/proc/partitions", "/proc/stat", "/proc/sys/net/ipv4/igmp_max_memberships", "/proc/sys/net/ipv4/igmp_max_msf","/proc/uptime", "/proc/version", "/etc/rdma/rdma.conf","/etc/systemd/system/mlnx_interface_mgr@.service","/etc/systemd/system/sysinit.target.wants/openibd.service", "/proc/net/softnet_stat", "/proc/buddyinfo", "/proc/slabinfo", "/proc/pagetypeinfo","/etc/iproute2/rt_tables"]
 available_internal_files_collection = []
 # [field_name, file_name to cat]
-external_files_collection = [["kernel config", "/boot/config-$(uname -r)"],["mlxcables --DDM/--dump","cables/mlxcables_options_output"] ,["config.gz", "/proc/config.gz"],["zoneinfo","/proc/zoneinfo"],[ "interrupts","/proc/interrupts"],["lstopo-no-graphics","lstopo-no-graphics"] ,["lstopo-no-graphics -v -c","lstopo-no-graphics -v -c"],["lspci","lspci"],["lshw","lshw"],["lspci -vvvxxxxx","lspci -vvvxxxxx"],["lspci -xxxvvv","lspci -xxxvvv"],["ps -eLo","ps -eLo"],["ucx_info -c", "ucx_info -c"],["ucx_info -f","ucx_info -f"],["sysctl -a","sysctl -a"], ["netstat -anp","netstat -anp"] ,["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR_IOV", ""],["other_system_files",""],["numa_node",""],["trace","/sys/kernel/debug/tracing/trace"],["lspci -nnvvvxxxx","lspci_nnvvvxxx"],["journalctl -k -o short-monotonic","journal"]]
+external_files_collection = [["kernel config", "/boot/config-$(uname -r)"],["mlxcables --DDM/--dump","cables/mlxcables_options_output"] ,["config.gz", "/proc/config.gz"],["zoneinfo","/proc/zoneinfo"],[ "interrupts","/proc/interrupts"],["lstopo-no-graphics","lstopo-no-graphics"] ,["lstopo-no-graphics -v -c","lstopo-no-graphics -v -c"],["lspci","lspci"],["lshw","lshw"],["lspci -vvvxxxxx","lspci -vvvxxxxx"],["ps -eLo","ps -eLo"],["ucx_info -c", "ucx_info -c"],["ucx_info -f","ucx_info -f"],["sysctl -a","sysctl -a"], ["netstat -anp","netstat -anp"] ,["dmesg -T", "dmesg"], ["biosdecode", "biosdecode"], ["dmidecode", "dmidecode"], ["libvma.conf", "/etc/libvma.conf"], ["ibnetdiscover", ""], ["Installed packages", ""], ["Performance tuning analyze", ""], ["SR_IOV", ""],["other_system_files",""],["numa_node",""],["trace","/sys/kernel/debug/tracing/trace"],["lspci -nnvvvxxxx","lspci_nnvvvxxx"],["journalctl -k -o short-monotonic","journal"],["lspci -vv", "lspci_vv"]]
 available_external_files_collection = []
 copy_under_files = [["etc_udev_rulesd", "/etc/udev/rules.d/"], ["lib_udev_rulesd", "/lib/udev/rules.d/"]]
 copy_openstack_dirs  = [["conf_nova", "/var/lib/config-data/puppet-generated/nova_libvirt"], ["conf_nuetron", "/var/lib/config-data/puppet-generated/neutron/"]]
@@ -268,7 +268,7 @@ running_warnings = []
 #command not found 
 command_exists_dict = {}
 #commands that are part of higher chain commands ,used when generating config file
-sub_chain_commands = ["file: var/log/syslog", "file: var/log/messages", "file: var/log/boot.log", "mlnx_tune -i " + path + file_name, "ib_write_bw_test", "latency", "perf_samples", "mlxfwmanager --online-query-psid", "file: /sys/class/infiniband/*/iov", "file: /sys/class/infiniband/*/device/"]
+sub_chain_commands = ["file: var/log/syslog", "file: var/log/messages", "file: var/log/boot.log", "mlnx_tune -i " , "ib_write_bw_test", "latency", "perf_samples", "mlxfwmanager --online-query-psid", "file: /sys/class/infiniband/*/iov", "file: /sys/class/infiniband/*/device/"]
 critical_collection = PCIE_debugging_collection # List of all critical commands
 critical_collection.append("general_fw_command_output")
 critical_collection.append("mstcommand_d_handler")
@@ -1010,7 +1010,7 @@ def devlink_handler():
 def mlnx_qos_handler():
     if not pf_devices:
         return "No interfaces were found"
-    st,res = getstatusoutput("mlnx_qos")
+    st,res = getstatusoutput("mlnx_qos --version")
     if(st != 0 and "command not found" in res):
         return "mlnx_qos command not found"
     mellanox_net_devices = pf_devices
@@ -1337,7 +1337,7 @@ def mlxcables_options_handler():
                 res += '\n\n****************************************\n\n'
             res += 'mlxcables -d ' + mlxcable + ' ' + option + '\n\n'
             res_st, res_mlxcable_option = get_status_output('mlxcables -d ' + mlxcable + ' ' + option)
-            if res_st != 0 and st != CANCELED_STATUS:
+            if res_st != 0 and res_st != CANCELED_STATUS:
                 res_mlxcable_option = 'Could not run: \"mlxcables -d ' + mlxcable + ' ' + option + '"'
             res += res_mlxcable_option
             flag = 1
@@ -1390,34 +1390,31 @@ def mlxcables_standard_handler():
             return 0, res
 
 def lspci_vv_handler():
-    mlnx_pci = [] # A list containing (first part of) PCI addresses of Mellanox devices
-    final_pci_to_invoke = [] # A list containing final PCI addresses to invoke
-    result = "" # Final result
-
-    st, lspci = get_status_output("lspci")
-    lspci_lines = lspci.splitlines()
-    for line in lspci_lines: # Loop in order to eliminate usage of grep in the command
-        if 'Mellanox' in line:
-            pci = line.split(':')[0]
-            if pci not in mlnx_pci:
-                mlnx_pci.append(pci)
-
-    st, lspi_tree = get_status_output("lspci -t") # lspci tree
-    split_pci_tree = re.split('(\[....:..\])', lspi_tree)
-    for mlx_pci in mlnx_pci: # Iterate over each mlnx_pci address, and check if it's linked in the pci tree. If it is, add it to invoke later.
-        for index in range(1, len(split_pci_tree)): # Need to go over each line of the pci_links paragraph, and if MLNX PCI is there, it means they're linked
-            split_pci_tree_lines = split_pci_tree[index].splitlines()
-            for line in split_pci_tree_lines:
-                if ('[' + mlx_pci + ']') in line:
-                    second_part = line.split(('[' + mlx_pci + ']'))[0]
-                    second_part = re.sub('[^\d\.]', '', second_part) # Clean the string to get the correct second part of the final PCI address to invoke
-                    first_part = split_pci_tree[index - 1].split(':')[1].replace(']','')
-                    final_pci_to_invoke.append(first_part + ':' + second_part)
-
+    mlnx_pci = [] # A list containing  PCI addresses of Mellanox devices
+    result = "Mellanox Pci devices tree \n" # Final result
+    st,res = get_status_output("lspci -nnd 15b3:")
+    if st == 0  and res :
+        lines = res.splitlines()
+        for line in lines:
+            device = line.split()[0]
+            path = os.readlink("/sys/bus/pci/devices/0000:" + device)
+            pci = path.split('/')
+            for part in pci:
+                part = part.split(":",1)
+                if len(part) > 1:
+                    part = part[1]
+                    # Define the case-insensitive regular expression pattern to match  "xx:xx.x"
+                    pattern = r'^[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}\.?[0-9a-zA-Z]*$'
+                    # Use re.match() to check if the input string matches the pattern
+                    match = re.match(pattern, part)
+                    if bool(match) and not part in mlnx_pci :
+                        mlnx_pci.append(part)
+            result += path + "\n"
+    result += "\n\n"
     result += 'lspci -vv -s <Query device that is connected to Mellanox device according to the lspci tree>' + '\n\n'
-    if not final_pci_to_invoke:
+    if not mlnx_pci:
         result += 'No devices found'
-    for pci_address in final_pci_to_invoke:
+    for pci_address in mlnx_pci:
         st, lspci_vv = get_status_output('lspci -vv -s ' + pci_address)
         if not st == 0:
             result += 'Error invoking lspci -vv -s ' + pci_address + '\n'
@@ -2143,13 +2140,40 @@ def nvsm_dump_health_handler():
     # the result of the command is a tar archive maybe have to use tar commad annd append the archive contant as href
     st,result = get_status_output("nvsm dump health -tfp " + path + file_name, "6m")
     if st != 0:
-        if ST == CANCELED_STATUS:
+        if st == CANCELED_STATUS:
             return 1, result
         res += "Could not run the command - nvsm dump health\n\n" + result
     else:
         res += "Produced a health report as .tar archive in the given path " + path
     res += "---------------------------------------------------------\n\n"
     return st, res
+
+# *******************************************************************
+#            pci_bus handler
+
+def pci_bus_handler():
+    res = ""
+    st,result = get_status_output("lspci -nnd ::0302")
+    if st == 0  and result :
+        lines = result.splitlines()
+        res = "Nvidia pci buses \n"
+        for line in lines:
+            device = line.split()[0]
+            path = os.readlink("/sys/bus/pci/devices/0000:" + device)
+            res += path + "\n"
+        res += " RP   |  UP      iDP     iUP     DP   |  UP      iDP     iUP     DP   |  UP      DP   |  EP \n"
+        res += "  CPU  |           CDFP Switch         |          Switch Board         | GPU Baseboard |  GPU \n"
+    st,result = get_status_output("lspci -nnd 15b3:")
+    if st == 0  and result :
+        lines = result.splitlines()
+        res += "Mellanox pci buses \n"
+        for line in lines:
+            device = line.split()[0]
+            path = os.readlink("/sys/bus/pci/devices/0000:" + device)
+            res += path + "\n"
+        res += "  RP   |  UP      iDP     iUP     DP   |  UP      iDP     iUP     DP   |  EP \n"
+        res += "  CPU  |           CDFP Switch         |          Switch Board         |  NIC \n"
+    return 0,res
 
 # *******************************************************************
 #            mlxreg <mst_device> handler
@@ -2460,11 +2484,6 @@ def add_command_if_exists(command):
             result = "no_cables_flag used , mlxcables commands are not executed"
             status = 0
             print_err_flag = 0
-    elif (command == "lspci -vv"):
-        result = lspci_vv_handler()
-        add_output_to_pcie_folder("lspci_vv", result)
-        status = 0
-        print_err_flag = 0
     elif (command == "mlxmcg -d"):
         result = ""
         if not no_cables_flag:
@@ -2569,6 +2588,34 @@ def add_command_if_exists(command):
             status = 1
             print_err_flag = 1
             result = "could not run : logname"
+    elif (command == "bandwidthTest"):
+        st, result = get_status_output("/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --dtoh", "/usr/local/cuda/extras/demo_suite/bandwidthTest --memory=pinned --mode=range --start=65536 --end=65011712 --increment=4194304 --device=all --htod")
+        if (st == 0):
+            status = 0
+            print_err_flag = 0
+        else:
+            status = 1
+            print_err_flag = 1
+            result = "could not run : /usr/local/cuda/extras/demo_suite/bandwidthTest"
+    elif (command == "cuda_deviceQuery"):
+        st, result = get_status_output("/usr/local/cuda/extras/demo_suite/deviceQuery")
+        if (st == 0):
+            status = 0
+            print_err_flag = 0
+        else:
+            status = 1
+            print_err_flag = 1
+            result = "could not run :  /usr/local/cuda/extras/demo_suite/deviceQuery"   
+            
+    elif (command == "mlnx_ethtool_version"):
+        st, result = get_status_output("/opt/mellanox/ethtool/sbin/ethtool --version")
+        if (st == 0):
+            status = 0
+            print_err_flag = 0
+        else:
+            status = 1
+            print_err_flag = 1
+            result = "could not run : /opt/mellanox/ethtool/sbin/ethtool --version"  
     elif (command == "sysclass_IB_modules_parameters"):
         status, result = yy_ib_modules_parameters_handler()
         if(status == 0):
@@ -2602,6 +2649,14 @@ def add_command_if_exists(command):
             print_err_flag = 1
     elif (command == "proc_net_bonding_files"):
         status, result = zz_files_handler('/proc/net/bonding/')
+        if (status == 0):
+            status = 0
+            print_err_flag = 0
+        else:
+            status = 1
+            print_err_flag = 1
+    elif (command == "Mellanox_Nvidia_pci_buses"):
+        status, result = pci_bus_handler()
         if (status == 0):
             status = 0
             print_err_flag = 0
@@ -3256,7 +3311,7 @@ def add_internal_file_if_exists(file_full_path):
 # command_output - is the content of the out_file_name
 
 def add_ext_file_handler(field_name, out_file_name, command_output):
-    external_command = ["pcie_debug_dict","sysctl -a","ps -eLo","chkconfig","ucx_info -f","ucx_info -c","numa_node","netstat -anp","lstopo-no-graphics","lstopo-no-graphics -v -c","mlnx_tune -r -i " + path + file_name,"zoneinfo","other_system_files","interrupts"]
+    external_command = ["pcie_debug_dict","sysctl -a","ps -eLo","chkconfig","ucx_info -f","ucx_info -c","numa_node","netstat -anp","lstopo-no-graphics","lstopo-no-graphics -v -c","mlnx_tune -r -i ","zoneinfo","other_system_files","interrupts"]
     forbidden_chars = re.compile('([\/:*?"<||-])')
     out_file_name = forbidden_chars.sub(r'', out_file_name).replace("\\", "") # clean the file name
     out_file_name = out_file_name.replace(" ","_")
@@ -3367,25 +3422,6 @@ def add_external_file_if_exists(field_name, curr_path):
         else:
             err_flag = 1
             err_command +=command
-    elif(field_name == "lspci -xxxvvv"):
-        if is_command_allowed("lspci -xxxvvv"):
-            cmd = "lspci | awk '{print $1}'"
-            st, output = get_status_output(cmd)
-            if (st == 0 and output == ""):
-                err_flag = 1
-                err_command += "lspci | awk '{print $1}'"
-            else:
-                interfaces = output.splitlines()
-                command_output = ""
-                for i in range(0, len(interfaces)):
-                    cmd = "lspci -s " + interfaces[i].strip() + " -xxxvvv"
-                    st2, output2 = get_status_output(cmd)
-                    if st2 == 0 and output2 != "":
-                        command_output += cmd + "\n"
-                        command_output += output2
-                        if i != len(interfaces)-1:
-                            command_output += "\n----------------------------------------\n\n"
-                add_ext_file_handler(field_name, field_name, command_output)
     elif (field_name == "ibnetdiscover"):
         if is_command_allowed("ibnetdiscover","no_ib"):
             if (is_ib == 0 and no_ib_flag == False):
@@ -3485,23 +3521,22 @@ def add_external_file_if_exists(field_name, curr_path):
                 err_command += "find /sys | grep numa_node | grep -v uevent |sort"
     elif ("mlnx_tune" in field_name):
         if is_command_allowed("mlnx_tune","no_ib"):
-            status, command_output = get_status_output("./mlnx_tune -r -i " + path + file_name, "1m")
-            if not (("No such file or directory" in command_output) or ((status != 0) and not ("Unsupported" in command_output))):
-                add_ext_file_handler(field_name, curr_path, command_output)
+            status, command_output = get_status_output(field_name + path + file_name , "1m")
+            if not (status == 0 or ("Unsupported" in command_output)):
+                err_flag = 1
+                err_command += field_name + " - tool is not installed, and there is no script mlnx_tune"
+                err_command += "\nmlnx_tune tool is available on Mellanox OFED 3.0.0 and above"
             else:
-                status, command_output = get_status_output(field_name, "1m")
-                if not (status == 0 or ("Unsupported" in command_output)):
-                    err_flag = 1
-                    err_command += field_name + " - tool is not installed, and there is no script mlnx_tune"
-                    err_command += "\nmlnx_tune tool is available on Mellanox OFED 3.0.0 and above"
-                else:
-                    add_ext_file_handler(field_name, curr_path, command_output)
+                add_ext_file_handler(field_name, curr_path, command_output)
     elif ("dmidecode" in field_name):
         if is_command_allowed("dmidecode"):
             status = get_dmidecode_info()
             if (status != 0):
                 err_flag = 1
                 err_command += field_name
+    elif field_name == "lspci -vv":
+        command_output = lspci_vv_handler()
+        add_ext_file_handler(field_name, curr_path, command_output)
     else:
         if is_command_allowed(field_name):
             status, command_output = get_status_output(field_name, "10")
@@ -3609,7 +3644,7 @@ def arrange_fabric_commands_section():
 
 def arrange_internal_files_section():
     if (cur_os == "debian"):
-        internal_files_collection.extend(["/etc/debian_version","/etc/network/interfaces"])
+        internal_files_collection.extend(["/etc/debian_version","/etc/network/interfaces","/etc/networks"])
     if verbose_flag:
         print("\tGenerating internal files section has started")
     # Internal files with static paths handlers
@@ -3641,16 +3676,6 @@ def arrange_internal_files_section():
                     add_internal_file_if_exists("/etc/netplan/" + file)
                     if verbose_count == 2:
                         print("\t\t/etc/netplan/" + file + " - end")
-    if is_command_allowed("file: /etc/network/") and (cur_os == "debian"):
-        if (os.path.exists("/etc/network/") == True):
-            for subdir, dirs, files in os.walk("/etc/network/"):
-                for file in files:
-                    if (os.path.isfile(os.path.join(subdir, file)) == True):
-                        if verbose_count == 2:
-                            print("\t\t" + os.path.join(subdir, file)+ " - start")
-                        add_internal_file_if_exists(os.path.join(subdir, file))
-                        if verbose_count == 2:
-                            print("\t\t" + os.path.join(subdir, file) + " - end")
     if is_command_allowed("file: /proc/net/vlan/" ):
         if (os.path.exists("/proc/net/vlan/") == True):
             for file in os.listdir("/proc/net/vlan/"):
@@ -3663,7 +3688,7 @@ def arrange_internal_files_section():
     if is_command_allowed("file: /sys/devices/system/node/" ):
         if (os.path.exists("/sys/devices/system/node/") == True):
             for file in os.listdir("/sys/devices/system/node/"):
-                if (os.path.isfile("/sys/devices/system/node/"+file) == False):
+                if (os.path.isfile("/sys/devices/system/node/"+file) == False) and (os.path.exists("/sys/devices/system/node/"+file+"/cpulist")):
                     if verbose_count == 2:
                         print("\t\t/sys/devices/system/node/" + file + "/cpulist - start")
                     add_internal_file_if_exists("/sys/devices/system/node/"+file+"/cpulist")
@@ -3672,7 +3697,8 @@ def arrange_internal_files_section():
     if is_command_allowed("file: /etc/sysconfig/network-scripts/ifcfg*" ):
         if (cur_os != "debian" and os.path.exists("/etc/sysconfig/network-scripts/") == True):
             for file in os.listdir("/etc/sysconfig/network-scripts/"):
-                if ( (os.path.isfile("/etc/sysconfig/network-scripts/"+file) == True) and (file.startswith("ifcfg")) ):
+                suffixes = [".back", ".bak", ".save"]
+                if ( (os.path.isfile("/etc/sysconfig/network-scripts/"+file) == True) and (file.startswith("ifcfg")) and not  any(file.endswith(suffix) for suffix in suffixes) ):
                     if verbose_count == 2:
                         print("\t\t/etc/sysconfig/network-scripts/" + file + " - start")
                     add_internal_file_if_exists("/etc/sysconfig/network-scripts/" + file)
@@ -3794,7 +3820,8 @@ def arrange_dicts():
     arrange_server_commands_section()
     arrange_internal_files_section()
     arrange_external_files_section()
-    update_saquery()
+    if not no_ib_flag:
+        update_saquery()
     if (st_saquery == 0 and no_ib_flag == False):
         arrange_fabric_commands_section()
     else:
@@ -3873,7 +3900,6 @@ def add_sriov_command_if_exists(command):
             f.close()
 
 def add_sriov_internal_file_if_exists(file_full_path):
-
     # put provided file textual content in result
     status, result = get_status_output("cat " + file_full_path)
 
@@ -3972,20 +3998,6 @@ def arrange_sriov_internal_files_section():
                                         add_sriov_internal_file_if_exists("/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/pkey_idx/" + str(n))
                                         if verbose_count == 2:
                                             print("\t\t\t/sys/class/infiniband/" + indir + "/iov/" + indir2 + "/port/" + str(m) + "/pkey_idx/" + str(n) + " - end")
-    if is_command_allowed("file: /sys/bus/pci/drivers/"):
-        if os.path.exists("/sys/bus/pci/drivers/"):
-            for indir in os.listdir("/sys/bus/pci/drivers/"):
-                if indir.endswith("core"):
-                    if verbose_count == 2:
-                        print("\t\t\t/sys/bus/pci/drivers/"+ indir + "/unbind - start")
-                    add_sriov_internal_file_if_exists("/sys/bus/pci/drivers/"+ indir + "/unbind")
-                    if verbose_count == 2:
-                        print("\t\t\t/sys/bus/pci/drivers/"+ indir + "/unbind - end")
-                    if verbose_count == 2:
-                        print("\t\t\t/sys/bus/pci/drivers/"+ indir + "/bind - start")
-                    add_sriov_internal_file_if_exists("/sys/bus/pci/drivers/"+ indir + "/bind")
-                    if verbose_count == 2:
-                        print("\t\t\t/sys/bus/pci/drivers/"+ indir + "/bind - end")
     if is_command_allowed("file: /etc/sysconfig/network-scripts/" ):
         if os.path.exists("/etc/sysconfig/network-scripts/"):
             for infile in os.listdir("/etc/sysconfig/network-scripts/"):
@@ -4014,17 +4026,6 @@ def arrange_sriov_internal_files_section():
                                 add_sriov_internal_file_if_exists("/sys/class/net/" + indir + "/" + inSomething)
                                 if verbose_count == 2:
                                     print("\t\t\t/sys/class/net/" + indir + "/" + inSomething + " - end")
-    if is_command_allowed("file: /sys/bus/pci/devices/"):
-        if os.path.exists("/sys/bus/pci/devices/"):
-            for indir in os.listdir("/sys/bus/pci/devices/"):
-                if os.path.isfile("/sys/bus/pci/devices/" + indir) == False:
-                    if os.path.isfile("/sys/bus/pci/devices/" + indir + "/reset"):
-                        if verbose_count == 2:
-                            print("\t\t\t/sys/bus/pci/devices/" + indir + "/reset - start")
-                        add_sriov_internal_file_if_exists("/sys/bus/pci/devices/" + indir + "/reset")
-                        if verbose_count == 2:
-                            print("\t\t\t/sys/bus/pci/devices/" + indir + "/reset - end")
-
     if verbose_flag:
         print("\t\tGenerating sr_iov internal files section has ended")
 
@@ -4333,29 +4334,19 @@ def performance_lspci(check_latest=False):
             pci_devices[i]["status"] = not_available
             pci_devices[i]["desired_gen"] = not_available
             continue
-
         card_str = card
         card = card.split("[")[1]
         card = card.split("]")[0]
         card = card.lower()
-
-        if (("-ib" in card) or ("pro" in card) or ("x-3" in card) or ("x3" in card) or ("x-4" in card) or ("x4" in card) or ("connectib" in card)):
-            pci_devices[i]["desired_gen"] = 3.0
+        if ("pcie 2.0" in card):
+            pci_devices[i]["desired_payload_size"] = 256.0
+            pci_devices[i]["desired_max_read_request"] = 512.0
+        elif (("x-2" in card) or ("x2" in card)):
+            pci_devices[i]["desired_payload_size"] = 256.0
+            pci_devices[i]["desired_max_read_request"] = 512.0
         else:
-            if ("x-5" in card) or ("x5" in card) or ("x6" in card) or ("x-6" in card) or ("MT27630" in card_str) or ("MT28908" in card_str):
-                pci_devices[i]["desired_gen"] = 4.0
-            elif ("pcie 2.0" in card):
-                pci_devices[i]["desired_gen"] = 2.0
-                pci_devices[i]["desired_payload_size"] = 256.0
-                pci_devices[i]["desired_max_read_request"] = 512.0
-            elif (("x-2" in card) or ("x2" in card)):
-                pci_devices[i]["desired_gen"] = 2.0
-                pci_devices[i]["desired_payload_size"] = 256.0
-                pci_devices[i]["desired_max_read_request"] = 512.0
-            else:
-                pci_devices[i]["desired_gen"] = 1.0
-                pci_devices[i]["desired_payload_size"] = 256.0
-                pci_devices[i]["desired_max_read_request"] = 512.0
+            pci_devices[i]["desired_payload_size"] = 256.0
+            pci_devices[i]["desired_max_read_request"] = 512.0
         st, firmwares_query, tool_used = general_fw_command_output('fwflint_q', card_pci)
         if (st == 0):
             #firmwares_query :-
@@ -4402,6 +4393,20 @@ def performance_lspci(check_latest=False):
                 pci_devices[i]["current_gen"] = -1.0
         else:
             pci_devices[i]["current_gen"] = -1.0
+    st, cards_gen = get_status_output("lspci -d 15b3: -vvv | grep -i PCIeGen")
+    if (st != 0):
+        perf_val_dict[key] = "command not found: lspci -d 15b3: -vvv | grep -i PCIeGen"
+        direct = True
+        return
+    i = -1
+    cards_gen = cards_gen.splitlines()
+    for line in cards_gen:
+        line = line.lower()
+        i += 1
+        try:
+            pci_devices[i]["desired_gen"] = float((line.split("pciegen")[1]).strip().split()[0])
+        except ValueError:
+            pci_devices[i]["desired_gen"] = -1.0
     st, cards_speed_width = get_status_output("lspci -d 15b3: -vvv | grep -i Speed")
     st, cards_speed_width = get_status_output("lspci -d 15b3: -vvv | grep -i Speed")
     if (st != 0):
@@ -4428,7 +4433,7 @@ def performance_lspci(check_latest=False):
         elif("lnkcap:" in line):
             try:
                 pci_devices[i]["desired_speed"] = float((line.split("gt/s")[0]).split()[-1])
-            except ValueError:
+            except ValueError as e:
                 pci_devices[i]["desired_speed"] = -1.0
             if (len(line.split("width x")) > 1):
                 try:
@@ -5388,20 +5393,15 @@ def load_modules():
     global are_inband_cables_loaded
     global mst_devices_exist
 
-    st, mst_start = get_status_output('mst start')
+    st, output = get_status_output('flint --version')
     if st != 0:
         if non_root:
             print("Running as a non-root user - You must be root to use mst tool")
         else:
-            print ('MFT is not installed,mst start failed')
+            print ('MFT is not installed,flint --version failed')
         is_MFT_installed = False
     else:
         is_MFT_installed = True
-    if 'already' in mst_start:
-        driver_required_loading = False
-    else:
-        driver_required_loading = True
-
     os.system("mst start > /dev/null 2>&1")
     if with_inband_flag:
         os.system("mst cable add --with_ib > /dev/null 2>&1")
