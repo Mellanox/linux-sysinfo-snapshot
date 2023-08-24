@@ -3333,7 +3333,6 @@ def add_external_file_if_exists(field_name, curr_path):
                         command_output += output2
                         if i != len(interfaces)-1:
                             command_output += "\n----------------------------------------\n\n"
-                add_output_to_pcie_folder("full_lspci", command_output)
                 add_ext_file_handler(field_name, field_name, command_output)
     elif (field_name == "ibnetdiscover"):
         if is_command_allowed("ibnetdiscover","no_ib"):
