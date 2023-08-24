@@ -4306,29 +4306,19 @@ def performance_lspci(check_latest=False):
             pci_devices[i]["status"] = not_available
             pci_devices[i]["desired_gen"] = not_available
             continue
-
         card_str = card
         card = card.split("[")[1]
         card = card.split("]")[0]
         card = card.lower()
-
-        if (("-ib" in card) or ("pro" in card) or ("x-3" in card) or ("x3" in card) or ("x-4" in card) or ("x4" in card) or ("connectib" in card)):
-            pci_devices[i]["desired_gen"] = 3.0
+        if ("pcie 2.0" in card):
+            pci_devices[i]["desired_payload_size"] = 256.0
+            pci_devices[i]["desired_max_read_request"] = 512.0
+        elif (("x-2" in card) or ("x2" in card)):
+            pci_devices[i]["desired_payload_size"] = 256.0
+            pci_devices[i]["desired_max_read_request"] = 512.0
         else:
-            if ("x-5" in card) or ("x5" in card) or ("x6" in card) or ("x-6" in card) or ("MT27630" in card_str) or ("MT28908" in card_str):
-                pci_devices[i]["desired_gen"] = 4.0
-            elif ("pcie 2.0" in card):
-                pci_devices[i]["desired_gen"] = 2.0
-                pci_devices[i]["desired_payload_size"] = 256.0
-                pci_devices[i]["desired_max_read_request"] = 512.0
-            elif (("x-2" in card) or ("x2" in card)):
-                pci_devices[i]["desired_gen"] = 2.0
-                pci_devices[i]["desired_payload_size"] = 256.0
-                pci_devices[i]["desired_max_read_request"] = 512.0
-            else:
-                pci_devices[i]["desired_gen"] = 1.0
-                pci_devices[i]["desired_payload_size"] = 256.0
-                pci_devices[i]["desired_max_read_request"] = 512.0
+            pci_devices[i]["desired_payload_size"] = 256.0
+            pci_devices[i]["desired_max_read_request"] = 512.0
         st, firmwares_query, tool_used = general_fw_command_output('fwflint_q', card_pci)
         if (st == 0):
             #firmwares_query :-
@@ -4375,6 +4365,20 @@ def performance_lspci(check_latest=False):
                 pci_devices[i]["current_gen"] = -1.0
         else:
             pci_devices[i]["current_gen"] = -1.0
+    st, cards_gen = get_status_output("lspci -d 15b3: -vvv | grep -i PCIeGen")
+    if (st != 0):
+        perf_val_dict[key] = "command not found: lspci -d 15b3: -vvv | grep -i PCIeGen"
+        direct = True
+        return
+    i = -1
+    cards_gen = cards_gen.splitlines()
+    for line in cards_gen:
+        line = line.lower()
+        i += 1
+        try:
+            pci_devices[i]["desired_gen"] = float((line.split("pciegen")[1]).strip().split()[0])
+        except ValueError:
+            pci_devices[i]["desired_gen"] = -1.0
     st, cards_speed_width = get_status_output("lspci -d 15b3: -vvv | grep -i Speed")
     st, cards_speed_width = get_status_output("lspci -d 15b3: -vvv | grep -i Speed")
     if (st != 0):
