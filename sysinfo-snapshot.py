@@ -3792,7 +3792,8 @@ def arrange_dicts():
     arrange_server_commands_section()
     arrange_internal_files_section()
     arrange_external_files_section()
-    update_saquery()
+    if not no_ib_flag:
+        update_saquery()
     if (st_saquery == 0 and no_ib_flag == False):
         arrange_fabric_commands_section()
     else:
@@ -4400,7 +4401,7 @@ def performance_lspci(check_latest=False):
         elif("lnkcap:" in line):
             try:
                 pci_devices[i]["desired_speed"] = float((line.split("gt/s")[0]).split()[-1])
-            except ValueError:
+            except ValueError as e:
                 pci_devices[i]["desired_speed"] = -1.0
             if (len(line.split("width x")) > 1):
                 try:
