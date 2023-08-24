@@ -1401,6 +1401,8 @@ def command_with_number_of_runs(number_of_runs, device, command, suffix, pcie_de
         command_result_device = command_result_device.replace("[31m","").replace("[32m","").replace("[33m","").replace("[0m","")
         if (mlx_st != 0):
             command_result_device = "Errors detected while running: " + command + " -d " + device + suffix + '"\n' + command_result_device
+            command_result += command_result_device
+            break
         command_result += command_result_device
     return command_result
 
