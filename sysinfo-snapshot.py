@@ -59,7 +59,7 @@ def standarize_str(tmp):
 def no_log_status_output(command, timeout='10s'):
     command = 'timeout '+ timeout + ' ' + command
     try:
-        p = subprocess.Popen([command], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        p = subprocess.Popen([command], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=1024*1024)
         stdout, stderr = p.communicate()
         return p.returncode, standarize_str(stdout)
     except:
@@ -286,20 +286,16 @@ supported_os_collection = ["redhat", "suse", "debian"]
 
 def log_command_status(parent, command, status, res, time_taken, invoke_time):
     global missing_critical_info
-    log = open("/tmp/status-log-" + file_name, 'a')
-
-    if status == 0:
-        log.write(str(invoke_time) + ":" + command + " ---- " + "PASSED, time taken: " + time_taken + "\n" )
-    else:
-        failed_reason = "FAILED"
-        if "not found" in res.lower() or "no such file or directory" in res.lower() or "not invoked" in res.lower() :
-            failed_reason = "NOT FOUND"
-        if parent in critical_collection:
-            if not missing_critical_info:
+    log_file = "/tmp/status-log-" + file_name
+    with open(log_file, 'a') as log:
+        status_message = "PASSED, time taken: {}".format(time_taken)
+        if status != 0:
+            failed_reason = "NOT FOUND" if "not found" in res.lower() or "no such file or directory" in res.lower() or "not invoked" in res.lower() else "FAILED"
+            status_message = "{}, time taken: {}".format(failed_reason, time_taken)
+            if parent in critical_collection:
                 missing_critical_info = True
-            critical_failed_commands.append(command + " ---- " + failed_reason)
-        log.write(str(invoke_time) + ":" + command + " ---- " + failed_reason + ", time taken: " + time_taken + "\n")
-    log.close()
+                critical_failed_commands.append("{} ---- {}".format(command, failed_reason))
+        log.write("{}:{} ---- {}\n".format(invoke_time, command, status_message))
 
 #*****************************************************************************************************
 #                               arrange_command_status_log
@@ -308,33 +304,32 @@ def log_command_status(parent, command, status, res, time_taken, invoke_time):
 # display running warnings
 
 def arrange_command_status_log():
-    tmp_log = open("/tmp/status-log-" + file_name, 'r')
-    log_content = tmp_log.read()
-    tmp_log.close()
+    temp_log_path = "/tmp/status-log-" + file_name
+    with open(temp_log_path, 'r') as temp_log:
+        log_content = temp_log.read()
 
-    log = open(path + file_name + "/status-log-" + file_name, 'w')
-    if missing_critical_info:
-        log.write("\n\n" +"Warning! The sysinfo-snapshot output failed to collect all essential information from the server.\n")
-        log.write("\nFailed critical debugging commands:\n")
-        for failed_command in critical_failed_commands:
-            log.write(failed_command + "\n")
-    if running_warnings:
+    with open(path + file_name + "/status-log-" + file_name, 'w') as log:
+        if missing_critical_info:
+            log.write("\n\nWarning! The sysinfo-snapshot output failed to collect all essential information from the server.\n")
+            log.write("\nFailed critical debugging commands:\n")
+            for failed_command in critical_failed_commands:
+                log.write(failed_command + "\n")
+        if running_warnings:
+            log.write("\n\n------------------------------------------------------------------------------------------------------------------\n")
+            log.write("\nRunning warnings:\n")
+            for warning in running_warnings:
+                log.write(warning + "\n")
         log.write("\n\n------------------------------------------------------------------------------------------------------------------\n")
-        log.write("\nRunning warnings:\n")
-        for warning in running_warnings:
-            log.write(warning + "\n")
-    log.write("\n\n------------------------------------------------------------------------------------------------------------------\n")
-    log.write("\nFull log:\n")
-    log.write(log_content)
-    log.close()
-
+        log.write("\nFull log:\n")
+        log.write(log_content)
+        
     # After moving status log inside the TGZ file, remove it from /tmp
     try:
-        os.remove("/tmp/status-log-" + file_name)
-    except:
-        with open("/tmp/status-log-" + file_name, 'a') as tmp_log:
-            tmp_log.write("\nError in removing status log from /tmp. Full path is: /tmp/status-log-" + file_name)
-
+        os.remove(temp_log_path)
+    except BaseException as e:
+        with open(temp_log_path ,'a') as temp_log:
+            temp_log.write(f"\nError in removing status log from /tmp. Full path is: {temp_log_path}\n{e}")
+    
 
 #*****************************************************************************************************
 #                                         log
@@ -390,7 +385,7 @@ def get_status_output(command, timeout='10'):
                 command_exists_dict[base_command] = is_exists
                 if not is_exists:
                     return CANCELED_STATUS , "Command not invoked " + command + " due to " + base_command + " does not exists"
-        p = subprocess.Popen([command_with_timeout], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        p = subprocess.Popen([command_with_timeout], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=1024*1024)
         stdout = ""
         stderr = ""
         stdout, stderr = p.communicate()
@@ -5382,12 +5377,12 @@ def confirm_mlnx_cards():
 
 # Create empty log files
 def create_empty_log_files():
-        f = open(path + file_name + "/err_messages/dummy_functions", 'a')
-        f.close()
-        f = open(path + file_name + "/err_messages/dummy_paths", 'a')
-        f.close()
-        f = open(path + file_name + "/err_messages/dummy_external_paths", 'a')
-        f.close()
+    file_paths = [f"{path}{file_name}/err_messages/dummy_functions",
+                f"{path}{file_name}/err_messages/dummy_paths",
+                f"{path}{file_name}/err_messages/dummy_external_paths"]
+    for file_path in file_paths:
+        with open(file_path, 'a'):
+            pass
 
 # Load module if needed and save old mst status
 def load_modules():
@@ -5473,15 +5468,16 @@ def generate_pcie_debug_info():
 
 def add_output_to_pcie_folder(file,output):
     """
-    Function that take specific output and write it to new file called file_name under pcie folder.
-    :param file_name:
-    :param output:
+    
+    Function that takes specific output and writes it to a new file with name 'file' under the 'pcie_files' directory.
+    :param file: the name of the file to be written
+    :param output: the content to be written to the file
     :return: None
+
     """
     full_path =path + file_name + "/pcie_files/" + file
-    f = open(full_path, "w")
-    f.write(output)
-    f.close()
+    with open(full_path, "w") as f:
+        f.write(output)
 
 def create_tar_file():
     # Arrange status log and copy it into the tar file
