@@ -125,7 +125,14 @@ level, vailable if option is provided twice, lists sections and commands in proc
 Allow the tool to run as non-root user, commands/files that require root permissions are missing.\
 5.3.25 -t | --nvsm_dump \
 Collect nvsm dump health.\
-
+5.3.26 --no_fw_regdumps.\
+disable regdumps firmware command.
+5.3.27 -- no_mstconfig.\
+disable mstconfig firmware command.
+5.3.28 --no_cables \
+disable mlxlink, mget_temp, mlxmcg command that is related to cables.
+5.3.29 --all_var_log \
+collect all logs in /var/log/ dir.
 6. Generate Config – Guidelines
 
 6.1 Usage  \
