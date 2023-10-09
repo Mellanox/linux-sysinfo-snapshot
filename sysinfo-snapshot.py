@@ -1391,12 +1391,12 @@ def mlxcables_standard_handler():
 def lspci_vv_handler():
     mlnx_pci = [] # A list containing  PCI addresses of Mellanox devices
     result = "Mellanox Pci devices tree \n" # Final result
-    st,res = get_status_output("lspci -nnd 15b3:")
+    st,res = get_status_output("lspci -Dnnd 15b3:")
     if st == 0  and res :
         lines = res.splitlines()
         for line in lines:
             device = line.split()[0]
-            path = os.readlink("/sys/bus/pci/devices/0000:" + device)
+            path = os.readlink("/sys/bus/pci/devices/" + device)
             pci = path.split('/')
             for part in pci:
                 part = part.split(":",1)
@@ -2152,23 +2152,23 @@ def nvsm_dump_health_handler():
 
 def pci_bus_handler():
     res = ""
-    st,result = get_status_output("lspci -nnd ::0302")
+    st,result = get_status_output("lspci -Dnnd ::0302")
     if st == 0  and result :
         lines = result.splitlines()
         res = "Nvidia pci buses \n"
         for line in lines:
             device = line.split()[0]
-            path = os.readlink("/sys/bus/pci/devices/0000:" + device)
+            path = os.readlink("/sys/bus/pci/devices/" + device)
             res += path + "\n"
         res += " RP   |  UP      iDP     iUP     DP   |  UP      iDP     iUP     DP   |  UP      DP   |  EP \n"
         res += "  CPU  |           CDFP Switch         |          Switch Board         | GPU Baseboard |  GPU \n"
-    st,result = get_status_output("lspci -nnd 15b3:")
+    st,result = get_status_output("lspci -Dnnd 15b3:")
     if st == 0  and result :
         lines = result.splitlines()
         res += "Mellanox pci buses \n"
         for line in lines:
             device = line.split()[0]
-            path = os.readlink("/sys/bus/pci/devices/0000:" + device)
+            path = os.readlink("/sys/bus/pci/devices/" + device)
             res += path + "\n"
         res += "  RP   |  UP      iDP     iUP     DP   |  UP      iDP     iUP     DP   |  EP \n"
         res += "  CPU  |           CDFP Switch         |          Switch Board         |  NIC \n"
