@@ -71,7 +71,7 @@ def no_log_status_output(command, timeout='10s'):
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.7.6"
+version = "3.7.7"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
