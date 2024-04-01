@@ -197,6 +197,7 @@ pcie_debug_flag = False
 #pcie_debug_flag = False, means to run the tool normally and not PCIE_Debug run
 #pcie_debug_flag = True, means to run the tool only for collecting PCIE_Debug info
 no_ib_flag = False
+keep_info_flag = False
 #--with_inband_flag = False, means not to add in-band cable information
 #--with_inband = True, means to add in-band cable information
 #--with_inband can be converted to True by running the tool with --with_inband flag
@@ -413,19 +414,32 @@ def getstatusoutput(cmd):
 #   SIGINT-2-Interrupt from keyboard; Handlers (Ctrl+C)
 
 def signal_handler(signal, frame):
-    if (path_is_generated == 1):
-        no_log_status_output("rm -rf " + path)
-        #invoke_command(['rm', '-rf', path])
+    if(not keep_info_flag):
+        if (path_is_generated == 1):
+            no_log_status_output("rm -rf " + path)
+            #invoke_command(['rm', '-rf', path])
+        else:
+            # Remove tar out file
+            no_log_status_output("rm -rf " + path + file_name + ".tgz")
+            #invoke_command(['rm', '-rf', path+file_name+".tgz"])
+        remove_unwanted_files()
+        if driver_required_loading:
+            os.system('mst stop > /dev/null 2>&1')
+        print("\nRunning sysinfo-snapshot was halted!\nNo out directories/files.\nNo changes in modules loading states.")
+        os._exit(0)
     else:
-        # Remove tar out file
-        no_log_status_output("rm -rf " + path + file_name + ".tgz")
-        #invoke_command(['rm', '-rf', path+file_name+".tgz"])
-    remove_unwanted_files()
-    if driver_required_loading:
-        os.system('mst stop > /dev/null 2>&1')
-    print("\nRunning sysinfo-snapshot was halted!\nNo out directories/files.\nNo changes in modules loading states.")
-    os._exit(0)
-
+        if sriov_exists:
+            build_and_finalize_html3()
+        build_and_finalize_html2()
+        build_and_finalize_html()
+        create_tar_file()
+        remove_unwanted_files()
+        if driver_required_loading:
+            os.system('mst stop > /dev/null 2>&1')
+        print("\nRunning sysinfo-snapshot was halted!\n ")
+        print("Temporary destination directory is " + path)
+        print("Out file name is " + path + file_name + ".tgz\n")
+        os._exit(0)
 signal.signal(signal.SIGTSTP, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
@@ -1391,12 +1405,12 @@ def mlxcables_standard_handler():
 def lspci_vv_handler():
     mlnx_pci = [] # A list containing  PCI addresses of Mellanox devices
     result = "Mellanox Pci devices tree \n" # Final result
-    st,res = get_status_output("lspci -nnd 15b3:")
+    st,res = get_status_output("lspci -Dnnd 15b3:")
     if st == 0  and res :
         lines = res.splitlines()
         for line in lines:
             device = line.split()[0]
-            path = os.readlink("/sys/bus/pci/devices/0000:" + device)
+            path = os.readlink("/sys/bus/pci/devices/" + device)
             pci = path.split('/')
             for part in pci:
                 part = part.split(":",1)
@@ -2152,23 +2166,23 @@ def nvsm_dump_health_handler():
 
 def pci_bus_handler():
     res = ""
-    st,result = get_status_output("lspci -nnd ::0302")
+    st,result = get_status_output("lspci -Dnnd ::0302")
     if st == 0  and result :
         lines = result.splitlines()
         res = "Nvidia pci buses \n"
         for line in lines:
             device = line.split()[0]
-            path = os.readlink("/sys/bus/pci/devices/0000:" + device)
+            path = os.readlink("/sys/bus/pci/devices/" + device)
             res += path + "\n"
         res += " RP   |  UP      iDP     iUP     DP   |  UP      iDP     iUP     DP   |  UP      DP   |  EP \n"
         res += "  CPU  |           CDFP Switch         |          Switch Board         | GPU Baseboard |  GPU \n"
-    st,result = get_status_output("lspci -nnd 15b3:")
+    st,result = get_status_output("lspci -Dnnd 15b3:")
     if st == 0  and result :
         lines = result.splitlines()
         res += "Mellanox pci buses \n"
         for line in lines:
             device = line.split()[0]
-            path = os.readlink("/sys/bus/pci/devices/0000:" + device)
+            path = os.readlink("/sys/bus/pci/devices/" + device)
             res += path + "\n"
         res += "  RP   |  UP      iDP     iUP     DP   |  UP      iDP     iUP     DP   |  EP \n"
         res += "  CPU  |           CDFP Switch         |          Switch Board         |  NIC \n"
@@ -5668,6 +5682,7 @@ def generate_output():
 def update_flags(args):
     global no_fw_flag
     global no_ib_flag
+    global keep_info_flag
     global with_inband_flag
     global pcie_debug_flag
     global fsdump_flag
@@ -5762,6 +5777,8 @@ def update_flags(args):
         ibdiagnet_flag = True
     if (args.no_ib):
         no_ib_flag = True
+    if (args.keep_info):
+        keep_info_flag = True
     if (args.ufm):
         ufm_flag = True
     if (args.with_inband):
@@ -5904,6 +5921,7 @@ def get_parsed_args():
         parser.add_option("--ibdiagnet_ext", help="add ibdiagnet ext command to the output.", action='store_true')
         parser.add_option("--with_inband", help="add in-band cable info to the output.", action='store_true')
         parser.add_option("--no_ib", help="do not add server IB commands to the output.", action='store_true')
+        parser.add_option("--keep_info", help="do not delete logs that were gathered, even if sysinfo run is canceled in the middle. ", action='store_true')
         parser.add_option("--openstack", help="gather openstack relevant conf and log files", action='store_true')
         parser.add_option("--asap", help="gather asap relevant commands output", action='store_true')
         parser.add_option("--asap_tc", help="gather asap tc filter commands output", action='store_true')
@@ -5946,6 +5964,7 @@ def get_parsed_args():
         parser.add_argument("--ibdiagnet_ext", help="add ibdiagnet ext command to the output.", action='store_true')
         parser.add_argument("--ibdiagnet", help="add ibdiagnet command to the output.", action='store_true')
         parser.add_argument("--no_ib", help="do not add server IB commands to the output.", action='store_true')
+        parser.add_argument("--keep_info", help="do not delete logs that were gathered, even if sysinfo run is canceled in the middle. ", action='store_true')
         parser.add_argument("--openstack", help="gather openstack relevant conf and log files", action='store_true')
         parser.add_argument("--asap", help="gather asap relevant commands output", action='store_true')
         parser.add_argument("--asap_tc", help="gather asap tc filter commands output", action='store_true')
