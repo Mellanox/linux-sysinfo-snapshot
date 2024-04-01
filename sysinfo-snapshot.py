@@ -672,6 +672,8 @@ def is_command_allowed(config_key,related_flag=""):
             running_warnings.append("following command not collected it's missing in config file :\n" + config_key + "\n")
     return True
 
+is_bluefield_involved = False
+is_run_from_bluefield_host = False
 def update_net_devices():
     global pf_devices
     global asap_devices
@@ -680,6 +682,8 @@ def update_net_devices():
     global all_net_devices
     global local_mst_devices
     global mst_devices_exist
+    global is_bluefield_involved
+    global is_run_from_bluefield_host
 
     errors = []
 
@@ -710,6 +714,11 @@ def update_net_devices():
     st, lspci_devices = get_status_output("lspci | grep Mellanox")
     if (st != 0):
         errors.append("Failed to run the command lspci | grep Mellanox")
+    if "bluefield" in lspci_devices.lower():
+        is_bluefield_involved = True
+        st1, result = get_status_output('dmidecode -t 1')
+        if st1 == 0 and "bluefield" in result.lower():
+            is_run_from_bluefield_host = True
     pci_devices = lspci_devices.splitlines()
     mellanox_net_devices = [] # Only Mellanox net_devices
     st, all_interfaces = get_status_output("ls -la /sys/class/net")
@@ -1922,6 +1931,22 @@ def mlnx_snap_handler():
         res.append("<td><a href=mlnx_snap/" + file + "> /etc/mlnx_snap/" + file + "</a></td>")
     return 0,res
 
+#**********************************************************
+#        rshim_log_handler
+
+def rshim_log_handler():
+    res = ""
+    st = 0
+    if is_run_from_bluefield_host:
+        st,res = get_status_output('bfrshlog')
+    else :
+        if os.path.exists('/dev/rshim0/misc'):
+            st1,res1 = get_status_output('echo "DISPLAY_LEVEL 2 \n" > /dev/rshim0/misc') 
+            if(st1 == 0):
+                st,res = get_status_output('cat /dev/rshim0/misc') 
+        else:
+            res = "/dev/rshim0/misc file does not exist"
+    return st,res
 
 #**********************************************************
 #        show_irq_affinity_all Handlers
@@ -2599,6 +2624,10 @@ def add_command_if_exists(command):
             print_err_flag = 0
             command_is_string = False
         else:
+            print_err_flag = 1
+    elif (command == 'rshim_log'):
+        status, result = rshim_log_handler()
+        if(status != 0):
             print_err_flag = 1
     elif (command == "networkManager_system_connections"):
         status, result = network_manager_system_connections_handler()
@@ -3651,6 +3680,11 @@ def arrange_server_commands_section():
     update_net_devices()
     if verbose_flag:
         print("\tGenerating server commands section has started")
+    #if blueFeild is involved collect the rshim log.
+    if is_bluefield_involved:
+        commands_collection.append('rshim_log')
+        if is_run_from_bluefield_host:
+            commands_collection.append('bfver')
     # add server commands list
     for cmd in commands_collection:
         related_flag = ""
@@ -3710,8 +3744,7 @@ def arrange_fabric_commands_section():
             related_flag = "no_ib/ibdiagnet"
         if is_command_allowed(cmd,related_flag):
             if verbose_count == 2:
-                print("\t\t" + cmd + " - start")
-            add_fabric_multi_sub_command_if_exists(cmd)
+                add_fabric_multi_sub_command_if_exists(cmd)
             if verbose_count == 2:
                 print ("\t\t" + cmd + " - end")
     if verbose_flag:
@@ -3720,6 +3753,8 @@ def arrange_fabric_commands_section():
 def arrange_internal_files_section():
     if (cur_os == "debian"):
         internal_files_collection.extend(["/etc/debian_version","/etc/network/interfaces","/etc/networks"])
+    if is_bluefield_involved and is_run_from_bluefield_host:
+        internal_files_collection.append('/etc/mlnx-release')
     if verbose_flag:
         print("\tGenerating internal files section has started")
     # Internal files with static paths handlers
