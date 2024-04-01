@@ -4482,27 +4482,28 @@ def performance_lspci(check_latest=False):
                    running_warnings.append("--check_fw flag was provided but mlxfwmanager --online-query-psid command not allowed")
     if is_all_failed:
         running_warnings.append("--check_fw flag was provided but running flint q for all cards failed")
-    st, cards_xxx = get_status_output("lspci -d 15b3: -xxx | grep ^70")
+    st, cards_xxx = get_status_output("lspci -d 15b3: -xxx | grep '^70: '")
     if (st != 0):
-        perf_val_dict[key] = "command not found: lspci -d 15b3: -xxx | grep ^70"
+        perf_val_dict[key] = "command not found: lspci -d 15b3: -xxx | grep '^70: '"
         direct = True
         return
     i = -1
     cards_xxx = cards_xxx.splitlines()
     for card_xxx in cards_xxx:
         i += 1
-        if (len(card_xxx.split())<4):
-            pci_devices[i]["status"] = not_available
-            pci_devices[i]["current_gen"] = not_available
-            continue
-        card_cur_gen = card_xxx.split()[3]
-        if (len(card_cur_gen) > 1):
-            try:
-                pci_devices[i]["current_gen"] = float(card_cur_gen[1])
-            except ValueError:
+        if i < len(pci_devices):
+            if (len(card_xxx.split())<4):
+                pci_devices[i]["status"] = not_available
+                pci_devices[i]["current_gen"] = not_available
+                continue
+            card_cur_gen = card_xxx.split()[3]
+            if (len(card_cur_gen) > 1):
+                try:
+                    pci_devices[i]["current_gen"] = float(card_cur_gen[1])
+                except ValueError:
+                    pci_devices[i]["current_gen"] = -1.0
+            else:
                 pci_devices[i]["current_gen"] = -1.0
-        else:
-            pci_devices[i]["current_gen"] = -1.0
     st, cards_gen = get_status_output("lspci -d 15b3: -vvv | grep -i PCIeGen")
     if (st != 0):
         perf_val_dict[key] = "command not found: lspci -d 15b3: -vvv | grep -i PCIeGen"
