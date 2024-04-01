@@ -1680,7 +1680,6 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
         if tool_used == 'mst':
             try:
                 f = open(path + file_name + "/firmware/mstregdump_" + filtered_file_name, "w+")
-                f.write("mstregdump " + card + "\n")
                 f.write(res + "\n")
                 f.close()
                 return ("firmware/mstregdump_" + filtered_file_name, "mst", 0)
@@ -1693,7 +1692,6 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
         elif tool_used =='mft':
             try:
                 f = open(path + file_name + "/firmware/mstdump_" + filtered_file_name, "w+")
-                f.write("mstdump " + card + "\n")
                 f.write(res + "\n")
                 f.close()
                 return ("firmware/mstdump_" + filtered_file_name, "mft", 0)
