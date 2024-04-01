@@ -199,6 +199,7 @@ pcie_debug_flag = False
 #pcie_debug_flag = True, means to run the tool only for collecting PCIE_Debug info
 no_ib_flag = False
 keep_info_flag = False
+trace_flag = False
 interfaces_flag = False
 #--with_inband_flag = False, means not to add in-band cable information
 #--with_inband = True, means to add in-band cable information
@@ -3434,12 +3435,16 @@ def add_external_file_if_exists(field_name, curr_path):
                 err_command += "cat " + curr_path
     elif (field_name == "trace"):
         if is_command_allowed("file :" + curr_path):
-            status, command_output = get_status_output("cat " + curr_path)
-            if (status == 0):
-                    add_ext_file_handler("analyze_fw_trace_file", field_name, command_output)
-            else:
-                err_flag = 1
-                err_command += "cat " + curr_path
+            file_size_bytes = os.path.getsize(curr_path)
+            file_size_kilobytes = file_size_bytes / 1024
+            # if trace file less then 150KB or trace file flag enabled  
+            if(file_size_kilobytes <= 150 or trace_flag):
+                status, command_output = get_status_output("cat " + curr_path)
+                if (status == 0):
+                        add_ext_file_handler("analyze_fw_trace_file", field_name, command_output)
+                else:
+                    err_flag = 1
+                    err_command += "cat " + curr_path
     elif (field_name == "mlxcables --DDM/--dump"):
         if not no_cables_flag:
             if is_command_allowed("mlxcables --DDM/--dump"):
@@ -5875,6 +5880,7 @@ def update_flags(args):
     global no_fw_flag
     global no_ib_flag
     global keep_info_flag
+    global trace_flag
     global interfaces_flag
     global with_inband_flag
     global pcie_debug_flag
@@ -5972,6 +5978,8 @@ def update_flags(args):
         no_ib_flag = True
     if (args.keep_info):
         keep_info_flag = True
+    if (args.trace):
+        trace_flag = True
     if (args.interfaces):
         interfaces_flag = True
         parse_interfaces_handler(args.interfaces)
