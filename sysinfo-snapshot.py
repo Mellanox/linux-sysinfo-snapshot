@@ -26,6 +26,7 @@ import inspect
 import threading
 import shutil
 
+
 try:
     import json
     json_found = True
@@ -70,7 +71,7 @@ def no_log_status_output(command, timeout='10s'):
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.7.6"
+version = "3.7.7"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -197,6 +198,9 @@ pcie_debug_flag = False
 #pcie_debug_flag = False, means to run the tool normally and not PCIE_Debug run
 #pcie_debug_flag = True, means to run the tool only for collecting PCIE_Debug info
 no_ib_flag = False
+keep_info_flag = False
+trace_flag = False
+interfaces_flag = False
 #--with_inband_flag = False, means not to add in-band cable information
 #--with_inband = True, means to add in-band cable information
 #--with_inband can be converted to True by running the tool with --with_inband flag
@@ -413,19 +417,32 @@ def getstatusoutput(cmd):
 #   SIGINT-2-Interrupt from keyboard; Handlers (Ctrl+C)
 
 def signal_handler(signal, frame):
-    if (path_is_generated == 1):
-        no_log_status_output("rm -rf " + path)
-        #invoke_command(['rm', '-rf', path])
+    if(not keep_info_flag):
+        if (path_is_generated == 1):
+            no_log_status_output("rm -rf " + path)
+            #invoke_command(['rm', '-rf', path])
+        else:
+            # Remove tar out file
+            no_log_status_output("rm -rf " + path + file_name + ".tgz")
+            #invoke_command(['rm', '-rf', path+file_name+".tgz"])
+        remove_unwanted_files()
+        if driver_required_loading:
+            os.system('mst stop > /dev/null 2>&1')
+        print("\nRunning sysinfo-snapshot was halted!\nNo out directories/files.\nNo changes in modules loading states.")
+        os._exit(0)
     else:
-        # Remove tar out file
-        no_log_status_output("rm -rf " + path + file_name + ".tgz")
-        #invoke_command(['rm', '-rf', path+file_name+".tgz"])
-    remove_unwanted_files()
-    if driver_required_loading:
-        os.system('mst stop > /dev/null 2>&1')
-    print("\nRunning sysinfo-snapshot was halted!\nNo out directories/files.\nNo changes in modules loading states.")
-    os._exit(0)
-
+        if sriov_exists:
+            build_and_finalize_html3()
+        build_and_finalize_html2()
+        build_and_finalize_html()
+        create_tar_file()
+        remove_unwanted_files()
+        if driver_required_loading:
+            os.system('mst stop > /dev/null 2>&1')
+        print("\nRunning sysinfo-snapshot was halted!\n ")
+        print("Temporary destination directory is " + path)
+        print("Out file name is " + path + file_name + ".tgz\n")
+        os._exit(0)
 signal.signal(signal.SIGTSTP, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
@@ -655,6 +672,8 @@ def is_command_allowed(config_key,related_flag=""):
             running_warnings.append("following command not collected it's missing in config file :\n" + config_key + "\n")
     return True
 
+is_bluefield_involved = False
+is_run_from_bluefield_host = False
 def update_net_devices():
     global pf_devices
     global asap_devices
@@ -663,15 +682,18 @@ def update_net_devices():
     global all_net_devices
     global local_mst_devices
     global mst_devices_exist
+    global is_bluefield_involved
+    global is_run_from_bluefield_host
 
     errors = []
 
     if os.path.isdir('/dev/mst'):
         current_mst_devices = os.listdir("/dev/mst")
+        if interfaces_flag:
+            current_mst_devices = specific_cable_devices
         for device in current_mst_devices:
             if (not (device.startswith("CA") or device.startswith("SW")) and "cable" in device): # Make sure we get info only for local cables
                 local_mst_devices.append(device)
-
     if not sys_class_net_exists:
         errors.append("No Net Devices - The path /sys/class/net does not exist")
 
@@ -680,14 +702,24 @@ def update_net_devices():
         errors.append("Failed to run the command ls /sys/class/net")
         #e.g: all_net_devices = ['eno2', 'eno3', 'eno4', 'eno5', 'enp0s29u1u1u5', 'enp139s0f1', 'ib0', 'ib1', 'ib2', 'lo']
     else: all_net_devices = network_devices.splitlines()
-
+    if(interfaces_flag):
+        specific_all_net_devices = []
+        for device in specific_net_devices:
+            if device in all_net_devices:
+                specific_all_net_devices.append(device)
+            else :
+                print(device + " not found in net devices , please make sure you intered correct device\n ")
+        all_net_devices = specific_all_net_devices
     # e.g 81:00.0 Infiniband controller: Mellanox Technologies MT27800 Family [ConnectX-5]
     st, lspci_devices = get_status_output("lspci | grep Mellanox")
     if (st != 0):
         errors.append("Failed to run the command lspci | grep Mellanox")
-
+    if "bluefield" in lspci_devices.lower():
+        is_bluefield_involved = True
+        st1, result = get_status_output('dmidecode -t 1')
+        if st1 == 0 and "bluefield" in result.lower():
+            is_run_from_bluefield_host = True
     pci_devices = lspci_devices.splitlines()
-
     mellanox_net_devices = [] # Only Mellanox net_devices
     st, all_interfaces = get_status_output("ls -la /sys/class/net")
     if (st != 0):
@@ -699,7 +731,12 @@ def update_net_devices():
         mtusbs = re.findall(r'(.*?)- USB', mst_status)
         for mtusb_device in mtusbs:
             mtusb_devices.append(mtusb_device.strip()) # Clean the string
-
+        if interfaces_flag:
+            mtusb_dev = []
+            for dev in mtusb_devices:
+                if dev in specific_mst_devices:
+                    mtusb_dev.append(dev)
+            mtusb_devices = mtusb_dev
     for lspci_device in pci_devices:
         device = lspci_device.split()[0]
         if  "function" in lspci_device.lower():
@@ -716,7 +753,6 @@ def update_net_devices():
     if match:
         for interface in match:
             mellanox_net_devices.append(interface)
-
     asap_devices = mellanox_net_devices
     if "lo" in mellanox_net_devices:
         try:
@@ -736,6 +772,16 @@ def update_net_devices():
         except:
             pass
     pf_devices = mellanox_net_devices
+    if(interfaces_flag):
+        specific_mellanox_net_devices = []
+        specific_asap_devices = []
+        for device in specific_net_devices:
+            if device in mellanox_net_devices:
+                specific_mellanox_net_devices.append(device)
+            if device in asap_devices:
+                specific_asap_devices.append(device)
+        pf_devices = specific_mellanox_net_devices
+        asap_devices = specific_asap_devices
     if errors:
         f = open(path + file_name + "/err_messages/dummy_functions", 'a')
         f.write("Could not get network devices from the following commands: ")
@@ -947,6 +993,12 @@ def devlink_handler():
     result += "\n--------------------------------------------------\n"
 
     options = ["diagnose", "dump show"]
+    if interfaces_flag:
+        pci_dev = []
+        for device in pci_devices:
+            if device.split("/")[-1] in specific_pci_devices:
+                pci_dev.append(device)
+        pci_devices = pci_dev
     for device in pci_devices:
         for i, reporter in enumerate(devlink_health_json[device]):
             filtered_device_name = device.replace(":", "").replace(".", "").replace("/", "")
@@ -1047,8 +1099,14 @@ def cma_roce_handler(func):
         return "There are no mlx devices"
     res = ""
     first = True
-    for device in devices.splitlines():
-        _device = device.split("'")[1]
+    mlx_devices = [device.split("'")[1] for device in devices.splitlines()]
+    if interfaces_flag:
+        mlx_devices_specific = []
+        for device in specific_rdma_mlnx_devices:
+            if device in mlx_devices:
+                mlx_devices_specific.append(device)
+        mlx_devices = mlx_devices_specific
+    for _device in mlx_devices:
         st, _device_res = get_status_output("cma_roce_" + func + " -d " + _device)
         if not first:
             res += "\n\n---------------\n\n"
@@ -1316,6 +1374,8 @@ def mlxcables_options_handler():
 
     if mst_devices_exist:
         current_mst_devices = os.listdir("/dev/mst")
+        if interfaces_flag:
+            current_mst_devices = specific_cable_devices
         if with_inband_flag: # with in-band cables
             for device in current_mst_devices:
                 if 'cable' in device:
@@ -1366,14 +1426,27 @@ def mlxcables_standard_handler():
         f = open( path + file_name + "/cables/mlxcables_output","w+")
 
     if with_inband_flag: # If in-band cable info is requested, we have to load in-band cables anyways
-        st, res = get_status_output("mlxcables")
-        f.write(res)
+        mlxcables_res = ""
+        if interfaces_flag:
+            if not specific_cable_devices:
+                mlxcables_res += "No cables found"
+            for device in specific_cable_devices: 
+                st, res = get_status_output("mlxcables -d " + device)
+                mlxcables_res += "\n"
+                mlxcables_res += res
+        else :
+            st, mlxcables_res = get_status_output("mlxcables")
+        f.write(mlxcables_res)
         f.close()
         mlxcables_out.append("<td><a href=\"cables/mlxcables_output\">mlxcables_output</a></td>")
         return 0, mlxcables_out
     else: # Not to include in-band cables info
         if are_inband_cables_loaded:
             current_mst_devices = os.listdir("/dev/mst")
+            if interfaces_flag:
+                if not specific_cable_devices:
+                    mlxcables_res += "No cables found"
+                current_mst_devices = specific_cable_devices
             for device in current_mst_devices: # Run mlxcables only on local cables even if in-band cables are loaded
                 if (not (device.startswith("CA") or device.startswith("SW")) and "cable" in device):
                     st, res = get_status_output("mlxcables -d " + device)
@@ -1383,10 +1456,19 @@ def mlxcables_standard_handler():
             f.close()
             return 0, mlxcables_res
         else:
-            st, res = get_status_output("mlxcables")
-            f.write(res) # To put output in /cables, but still display it in HTML file because --no_inband was NOT given
+            mlxcables_res = ""
+            if interfaces_flag:
+                if not specific_cable_devices:
+                    mlxcables_res += "No cables found"
+                for device in specific_cable_devices: 
+                    st, res = get_status_output("mlxcables -d " + device)
+                    mlxcables_res += "\n"
+                    mlxcables_res += res
+            else :
+                st, mlxcables_res = get_status_output("mlxcables")# To put output in /cables, but still display it in HTML file because --no_inband was NOT given
+            f.write(mlxcables_res)
             f.close()
-            return 0, res
+            return 0, mlxcables_res
 
 def lspci_vv_handler():
     mlnx_pci = [] # A list containing  PCI addresses of Mellanox devices
@@ -1490,19 +1572,7 @@ def mstcommand_d_handler(command,pcie_debug = False):
         suffix_list = [" --port_type PCIE -c -e"]
 
     command_result = ""
-    if command == "mlxlink" or command == "mstlink":
-        mst_status_rs, mst_status_output = get_status_output("mst status -v")
-    else:
-        mst_status_rs, mst_status_output = get_status_output("mst status")
-     # --amber_collect
-    number_of_runs = 3
-    # network ports
-    suffix = "--amber_collect"
-    for local_mst_device in local_mst_devices:
-        command_result+= command_with_number_of_runs(number_of_runs,local_mst_device,command, suffix,pcie_debug)
-    if mtusb_flag:
-        for mtusb_device in mtusb_devices:
-            command_result+= command_with_number_of_runs(number_of_runs,mtusb_device,command, suffix,pcie_debug)
+    mst_status_rs, mst_status_output = get_status_output("mst status -v")
     # PCIe ports
     for pci_device in pci_devices:
         device = pci_device["device"]
@@ -1520,7 +1590,7 @@ def mstcommand_d_handler(command,pcie_debug = False):
             number_of_runs = 1
             if (command_result != ""):
                 command_result += "\n\n-------------------------------------------------------------\n\n"
-            if "--port_type PCIE -c -e" or "--amber_collect" in suffix :
+            if "--port_type PCIE -c -e" in suffix or "--amber_collect" in suffix :
                 number_of_runs = 3
             # PCIe ports
             command_result+=command_with_number_of_runs(number_of_runs,device,command, suffix, pcie_debug, True)
@@ -1620,7 +1690,6 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
         if tool_used == 'mst':
             try:
                 f = open(path + file_name + "/firmware/mstregdump_" + filtered_file_name, "w+")
-                f.write("mstregdump " + card + "\n")
                 f.write(res + "\n")
                 f.close()
                 return ("firmware/mstregdump_" + filtered_file_name, "mst", 0)
@@ -1633,7 +1702,6 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
         elif tool_used =='mft':
             try:
                 f = open(path + file_name + "/firmware/mstdump_" + filtered_file_name, "w+")
-                f.write("mstdump " + card + "\n")
                 f.write(res + "\n")
                 f.close()
                 return ("firmware/mstdump_" + filtered_file_name, "mft", 0)
@@ -1763,7 +1831,6 @@ def generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output):
     elif is_MST_installed:
         if card in vf_pf_devices:
             return
-
     output = card
     filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
     output_file, tool_used, is_error = general_fw_commands_handler('fwconfig', card, filtered_file_name)
@@ -1802,12 +1869,11 @@ def generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output):
 
 def generate_mst_dumps(card, sleep_period, mstregdump_out, mst_status_output,temp):
     if is_MFT_installed:
-        if card not in mst_status_output:
+        if card not in mst_status_output: 
             return
     elif is_MST_installed:
         if card in vf_pf_devices:
             return
-
     for i in range(0, 3):
         output = card + temp + str(i + 1)
         filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
@@ -1837,8 +1903,7 @@ def mst_func_handler():
             mstregdump_out.append("There are no MTUSB devices.\n")
         else:
             all_devices += mtusb_devices
-
-    mst_status_rs, mst_status_output = get_status_output("mst status")
+    mst_status_rs, mst_status_output = get_status_output("mst status -v")
     temp = '_run_'
     for card in all_devices:
         generate_mst_dumps(card, sleep_period, mstregdump_out, mst_status_output,temp)
@@ -1866,6 +1931,22 @@ def mlnx_snap_handler():
         res.append("<td><a href=mlnx_snap/" + file + "> /etc/mlnx_snap/" + file + "</a></td>")
     return 0,res
 
+#**********************************************************
+#        rshim_log_handler
+
+def rshim_log_handler():
+    res = ""
+    st = 0
+    if is_run_from_bluefield_host:
+        st,res = get_status_output('bfrshlog')
+    else :
+        if os.path.exists('/dev/rshim0/misc'):
+            st1,res1 = get_status_output('echo "DISPLAY_LEVEL 2 \n" > /dev/rshim0/misc') 
+            if(st1 == 0):
+                st,res = get_status_output('cat /dev/rshim0/misc') 
+        else:
+            res = "/dev/rshim0/misc file does not exist"
+    return st,res
 
 #**********************************************************
 #        show_irq_affinity_all Handlers
@@ -1880,7 +1961,8 @@ def show_irq_affinity_all_handler():
     no_log_status_output("mkdir " + path + file_name + "/show_irq_affinity_all")
     net_devices += " mlx4 mlx5"
     net_devices = net_devices.split()
-
+    if(interfaces_flag):
+        net_devices = all_net_devices
     res = []
     for interface in net_devices:
         if (interface == "lo" or interface == "bonding_masters"):
@@ -2020,7 +2102,8 @@ def sys_class_infiniband_handler():
     st = st_infiniband_devices
     ib_devices = infiniband_devices
     ib_devices_lines = ib_devices.splitlines()
-
+    if interfaces_flag:
+        ib_devices_lines = specific_rdma_mlnx_devices
     for device in ib_devices_lines:
         sys_img_guid = get_file_content("/sys/class/infiniband/"+ device +"/sys_image_guid")
 
@@ -2053,7 +2136,7 @@ def sys_class_net_handler():
     ib_path_options = ["/mode", "/pkey", "/queues/rx-0/rps_cpus"]
 
     if os.path.exists("/sys/class/net/"):
-        for indir in os.listdir("/sys/class/net/"):
+        for indir in all_net_devices:
             if os.path.isfile("/sys/class/net/" + indir) == False:
                 if indir.startswith("ib"):
                     for option in ib_path_options:
@@ -2077,7 +2160,7 @@ def sys_class_net_handler():
 def ecn_configuration_handler():
     res = []
     if os.path.exists("/sys/class/net"):
-        for indir in os.listdir("/sys/class/net/"):
+        for indir in all_net_devices:
             if( os.path.exists("/sys/class/net/" + indir + "/ecn")):
                 # fillter indir cause this is the part in the path of the ECN output
                 # the file_name is the "sysinfo-snapshot-v" + version + "-"
@@ -2107,7 +2190,14 @@ def ecn_configuration_handler():
 def congestion_control_parameters_handler():
     res = []
     if os.path.exists("/sys/kernel/debug/mlx5"):
-        for indir in os.listdir("/sys/kernel/debug/mlx5/"):
+        pci_dev = os.listdir("/sys/kernel/debug/mlx5/")
+        if interfaces_flag:
+            specific_pci_kernal = []
+            for device in specific_pci_devices:
+                if device in pci_dev:
+                    specific_pci_kernal.append(device)
+            pci_dev = specific_pci_kernal
+        for indir in pci_dev:
             if( os.path.exists("/sys/kernel/debug/mlx5/" + indir + "/cc_params")):
                 if(not os.path.exists(path + file_name + "/ecn/")):
                     no_log_status_output("mkdir " + path + file_name + "/ecn" )
@@ -2180,6 +2270,8 @@ def mlxreg_handler():
     res = ""
     if mst_devices_exist:
         mst_devices = os.listdir("/dev/mst")
+        if interfaces_flag:
+            mst_devices = specific_mst_devices
         for device in mst_devices:
             if not "cable" in device:
                 res +=  "mlxreg -d /dev/mst/" + device +" --reg_name ROCE_ACCL --get \n\n"
@@ -2264,10 +2356,12 @@ def roce_counters_handler():
 
     st = st_infiniband_devices
     ib_devices = infiniband_devices
+   
     if st != 0:
         return 1, "Couldn't get RoCE Counters - /sys/class/infiniband does not exist."
-
     ib_devices = ib_devices.splitlines()
+    if(interfaces_flag):
+        ib_devices = specific_rdma_mlnx_devices
     for ib_device in ib_devices:
         st, ib_device_hw_counter_files = get_status_output("ls /sys/class/infiniband/"+ ib_device +"/hw_counters")
         if st == 0:
@@ -2530,6 +2624,10 @@ def add_command_if_exists(command):
             print_err_flag = 0
             command_is_string = False
         else:
+            print_err_flag = 1
+    elif (command == 'rshim_log'):
+        status, result = rshim_log_handler()
+        if(status != 0):
             print_err_flag = 1
     elif (command == "networkManager_system_connections"):
         status, result = network_manager_system_connections_handler()
@@ -3366,12 +3464,16 @@ def add_external_file_if_exists(field_name, curr_path):
                 err_command += "cat " + curr_path
     elif (field_name == "trace"):
         if is_command_allowed("file :" + curr_path):
-            status, command_output = get_status_output("cat " + curr_path)
-            if (status == 0):
-                    add_ext_file_handler("analyze_fw_trace_file", field_name, command_output)
-            else:
-                err_flag = 1
-                err_command += "cat " + curr_path
+            file_size_bytes = os.path.getsize(curr_path)
+            file_size_kilobytes = file_size_bytes / 1024
+            # if trace file less then 150KB or trace file flag enabled  
+            if(file_size_kilobytes <= 150 or trace_flag):
+                status, command_output = get_status_output("cat " + curr_path)
+                if (status == 0):
+                        add_ext_file_handler("analyze_fw_trace_file", field_name, command_output)
+                else:
+                    err_flag = 1
+                    err_command += "cat " + curr_path
     elif (field_name == "mlxcables --DDM/--dump"):
         if not no_cables_flag:
             if is_command_allowed("mlxcables --DDM/--dump"):
@@ -3482,7 +3584,10 @@ def add_external_file_if_exists(field_name, curr_path):
         if is_command_allowed("get_ib_sys_files_exclude_uevent_files","no_ib"):
             error_files = ""
             if (no_ib_flag == False):
-                st, res = get_status_output("find /sys | grep infini |grep -v uevent |sort")
+                cmd = "find /sys | grep infini |grep -v uevent |sort"
+                if(interfaces_flag):
+                    cmd = "find /sys | grep infini |grep -v uevent | grep -E '" + '|'.join(specific_pci_devices) + "' |sort"
+                st,res = get_status_output(cmd)
                 if (st == 0 and res != ""):
                     lines = res.splitlines()
                     command_output = ""
@@ -3575,6 +3680,11 @@ def arrange_server_commands_section():
     update_net_devices()
     if verbose_flag:
         print("\tGenerating server commands section has started")
+    #if blueFeild is involved collect the rshim log.
+    if is_bluefield_involved:
+        commands_collection.append('rshim_log')
+        if is_run_from_bluefield_host:
+            commands_collection.append('bfver')
     # add server commands list
     for cmd in commands_collection:
         related_flag = ""
@@ -3634,8 +3744,7 @@ def arrange_fabric_commands_section():
             related_flag = "no_ib/ibdiagnet"
         if is_command_allowed(cmd,related_flag):
             if verbose_count == 2:
-                print("\t\t" + cmd + " - start")
-            add_fabric_multi_sub_command_if_exists(cmd)
+                add_fabric_multi_sub_command_if_exists(cmd)
             if verbose_count == 2:
                 print ("\t\t" + cmd + " - end")
     if verbose_flag:
@@ -3644,6 +3753,8 @@ def arrange_fabric_commands_section():
 def arrange_internal_files_section():
     if (cur_os == "debian"):
         internal_files_collection.extend(["/etc/debian_version","/etc/network/interfaces","/etc/networks"])
+    if is_bluefield_involved and is_run_from_bluefield_host:
+        internal_files_collection.append('/etc/mlnx-release')
     if verbose_flag:
         print("\tGenerating internal files section has started")
     # Internal files with static paths handlers
@@ -4371,27 +4482,28 @@ def performance_lspci(check_latest=False):
                    running_warnings.append("--check_fw flag was provided but mlxfwmanager --online-query-psid command not allowed")
     if is_all_failed:
         running_warnings.append("--check_fw flag was provided but running flint q for all cards failed")
-    st, cards_xxx = get_status_output("lspci -d 15b3: -xxx | grep ^70")
+    st, cards_xxx = get_status_output("lspci -d 15b3: -xxx | grep '^70: '")
     if (st != 0):
-        perf_val_dict[key] = "command not found: lspci -d 15b3: -xxx | grep ^70"
+        perf_val_dict[key] = "command not found: lspci -d 15b3: -xxx | grep '^70: '"
         direct = True
         return
     i = -1
     cards_xxx = cards_xxx.splitlines()
     for card_xxx in cards_xxx:
         i += 1
-        if (len(card_xxx.split())<4):
-            pci_devices[i]["status"] = not_available
-            pci_devices[i]["current_gen"] = not_available
-            continue
-        card_cur_gen = card_xxx.split()[3]
-        if (len(card_cur_gen) > 1):
-            try:
-                pci_devices[i]["current_gen"] = float(card_cur_gen[1])
-            except ValueError:
+        if i < len(pci_devices):
+            if (len(card_xxx.split())<4):
+                pci_devices[i]["status"] = not_available
+                pci_devices[i]["current_gen"] = not_available
+                continue
+            card_cur_gen = card_xxx.split()[3]
+            if (len(card_cur_gen) > 1):
+                try:
+                    pci_devices[i]["current_gen"] = float(card_cur_gen[1])
+                except ValueError:
+                    pci_devices[i]["current_gen"] = -1.0
+            else:
                 pci_devices[i]["current_gen"] = -1.0
-        else:
-            pci_devices[i]["current_gen"] = -1.0
     st, cards_gen = get_status_output("lspci -d 15b3: -vvv | grep -i PCIeGen")
     if (st != 0):
         perf_val_dict[key] = "command not found: lspci -d 15b3: -vvv | grep -i PCIeGen"
@@ -4466,7 +4578,12 @@ def performance_lspci(check_latest=False):
                     pci_devices[i]["current_max_read_request"] = -1.0
             else:
                 pci_devices[i]["current_max_read_request"] = -1.0
-
+    if(interfaces_flag):
+        specific_pci_dev = []
+        for device in specific_pci_devices:
+            result = [d for d in pci_devices if d.get('device') == device.split(":",1)[1]]
+            specific_pci_dev.append(result[0])
+        pci_devices = specific_pci_dev
     PCIE_debugging_information = []
     for i in range(0, len(pci_devices)):
         if (pci_devices[i]["status"] == not_available):
@@ -4486,10 +4603,8 @@ def performance_lspci(check_latest=False):
 
         PCIE_debug_info = {"name": pci_devices[i]["name"],"current_fw": pci_devices[i]["current_fw"], "psid": pci_devices[i]["psid"]}
         PCIE_debugging_information.append(PCIE_debug_info)
+    
     add_output_to_pcie_debug_dict("devices_information", PCIE_debugging_information)
-
-
-
 
 
 #----------------------------------------------------------
@@ -5665,9 +5780,144 @@ def generate_output():
     # Remove all unwanted files
     remove_unwanted_files()
 
+#------------parse interfaces flag value and map it to pci ,net and rdma devices-------------------------
+specific_rdma_mlnx_devices = []
+specific_pci_devices = []
+specific_net_devices = []
+specific_mst_devices = []
+specific_cable_devices = []
+def parse_interfaces_handler(interfaces):
+    print('Running sysinfo-snapshot per specific interfaces ' + interfaces + "\n")
+    interfaces = interfaces.split(',')
+    global specific_rdma_mlnx_devices
+    global specific_net_devices 
+    global specific_pci_devices
+    global specific_mst_devices
+    global specific_cable_devices
+    ibdev2netdev_mapping = {}
+    ibdev2pcidev_mapping = {}
+    pcidev2mstdev_mapping = {}
+    mst2cabledev_mapping = {}
+    # map mst devices to RDMA , and cable devices to mst
+    cmd = "mst status -v"
+    st, ibdev2mstdev_result = get_status_output(cmd)
+    if st == 0:
+        ibdev2mstdev_result = re.split("-----+",ibdev2mstdev_result)
+        if(len(ibdev2mstdev_result) > 2):
+            cables_result = ibdev2mstdev_result[3]
+            ibdev2mstdev_result = ibdev2mstdev_result[2]
+            lines = ibdev2mstdev_result.splitlines()
+            for line in lines:
+                row = re.split(r'\s+',line)
+                if len(row) > 4:
+                    pcidev2mstdev_mapping["0000:" + row[2]] = row[1].split('/')[-1]
+            cables_result_lines = cables_result.splitlines()
+            for line in cables_result_lines:
+                mst = line.split("_cable")[0]
+                if mst:
+                    mst2cabledev_mapping[mst.strip()] = line.strip()
+    # map PCI devices to RDMA     
+    ibdev2pcidev = ibdev2pcidev_handler()
+    ibdev2pcidevLines = ibdev2pcidev.splitlines()
+    for line in ibdev2pcidevLines:
+        line = line.split("==>")
+        if len(line) > 1:
+            pci_address = line[1].strip()
+            mlnx_device = line[0].strip()
+            ibdev2pcidev_mapping[mlnx_device] = pci_address
+            #map net devices to RDMA 
+            cmd = "find /sys/devices -path */" + pci_address + "/net"
+            st, res = get_status_output(cmd)
+            if st == 0 and res:
+                cmd = "ls " + res.strip()
+                st1, net_dev = get_status_output(cmd)
+                if st1 == 0:
+                    ibdev2netdev_mapping[mlnx_device] = net_dev.strip()
+    #get all net,pci and rdma devices to validate entered interfaces
+    rdma_st, all_rdma_dev = get_status_output("ls /sys/class/infiniband")
+    if rdma_st == 0:
+        all_rdma_dev = all_rdma_dev.splitlines()
+        all_rdma_dev = [s.strip() for s in all_rdma_dev]
+    net_st , all_net_dev = get_status_output("ls /sys/class/net")
+    if net_st == 0:
+        all_net_dev = all_net_dev.splitlines()
+        all_net_dev = [s.strip() for s in all_net_dev]
+    pci_st , lspci_out = get_status_output("lspci -d 15b3:")
+    all_pci_dev = []
+    if pci_st == 0:
+        lspci_out = lspci_out.splitlines()
+        for line in lspci_out:
+            all_pci_dev.append("0000:" + line.strip().split()[0])
+    all_mst_dev = os.listdir("/dev/mst")
+    # check the entered interfaces 
+    for interface in interfaces:
+        interface = interface.strip()
+        if "rdma" in interface or "mlx5" in interface:
+            if(rdma_st == 0 and interface in all_rdma_dev):
+                if interface in ibdev2netdev_mapping:
+                    specific_net_devices.append(ibdev2netdev_mapping[interface])
+                if interface in ibdev2pcidev_mapping:
+                    specific_pci_devices.append(ibdev2pcidev_mapping[interface])
+                specific_rdma_mlnx_devices.append(interface)
+                if ibdev2pcidev_mapping[interface] in pcidev2mstdev_mapping:
+                    specific_mst_devices.append(pcidev2mstdev_mapping[ibdev2pcidev_mapping[interface]])
+                    if pcidev2mstdev_mapping[ibdev2pcidev_mapping[interface]] in mst2cabledev_mapping:
+                        specific_cable_devices.append(mst2cabledev_mapping[pcidev2mstdev_mapping[ibdev2pcidev_mapping[interface]]])
+            else:
+                print(interface + " not found in rdma/mlnx_5 devices , please make sure you entered correct device \n")
+        elif len(interface.split(":")) >= 2:
+            if not interface.strip().startswith("0000:"):
+                interface = "0000:" + interface
+            if( pci_st == 0 and interface in all_pci_dev):
+                specific_pci_devices.append(interface)
+                keys = [key for key, value in ibdev2pcidev_mapping.items() if value == interface]
+                if len(keys) > 0:
+                    specific_rdma_mlnx_devices.append(keys[0])
+                    if keys[0] in ibdev2netdev_mapping:
+                        specific_net_devices.append(ibdev2netdev_mapping[keys[0]])
+                if interface in pcidev2mstdev_mapping:
+                    specific_mst_devices.append(pcidev2mstdev_mapping[interface])
+                    if pcidev2mstdev_mapping[interface] in mst2cabledev_mapping:
+                        specific_cable_devices.append(mst2cabledev_mapping[pcidev2mstdev_mapping[interface]])
+            else:
+                print(interface + " not found in pci devices , please make sure you entered correct device \n")
+        elif "/dev/mst/" in interface:
+            interface = interface.split("/")[-1]
+            if interface in all_mst_dev:
+                specific_mst_devices.append(interface)
+                if interface in mst2cabledev_mapping:
+                    specific_cable_devices.append(mst2cabledev_mapping[interface])
+                keys = [key for key, value in pcidev2mstdev_mapping.items() if value == interface]
+                if len(keys) > 0:
+                    specific_pci_devices.append(keys[0])
+                    ib_keys = [key for key, value in ibdev2pcidev_mapping.items() if value == keys[0]]
+                    if len(ib_keys) > 0 :
+                        specific_rdma_mlnx_devices.append(ib_keys[0])
+                        if ib_keys[0] in ibdev2netdev_mapping:
+                            specific_net_devices.append(ibdev2netdev_mapping[ib_keys[0]])
+            else:
+                print(interface + " not found in mst devices , please make sure you entered correct device \n")
+        else:
+            if net_st == 0 and interface in all_net_dev:
+                keys = [key for key, value in ibdev2netdev_mapping.items() if value == interface]
+                if len(keys) > 0:
+                    specific_rdma_mlnx_devices.append(keys[0])
+                    if keys[0] in ibdev2pcidev_mapping:
+                        specific_pci_devices.append(ibdev2pcidev_mapping[keys[0]])
+                        if ibdev2pcidev_mapping[keys[0]] in pcidev2mstdev_mapping:
+                            specific_mst_devices.append(pcidev2mstdev_mapping[ibdev2pcidev_mapping[keys[0]]])
+                            if pcidev2mstdev_mapping[ibdev2pcidev_mapping[keys[0]]] in mst2cabledev_mapping:
+                                specific_cable_devices.append(mst2cabledev_mapping[pcidev2mstdev_mapping[ibdev2pcidev_mapping[keys[0]]]])
+                specific_net_devices.append(interface)
+            else:
+                print(interface + " not found in net devices , please make sure you entered correct device \n")
+    
 def update_flags(args):
     global no_fw_flag
     global no_ib_flag
+    global keep_info_flag
+    global trace_flag
+    global interfaces_flag
     global with_inband_flag
     global pcie_debug_flag
     global fsdump_flag
@@ -5762,6 +6012,13 @@ def update_flags(args):
         ibdiagnet_flag = True
     if (args.no_ib):
         no_ib_flag = True
+    if (args.keep_info):
+        keep_info_flag = True
+    if (args.trace):
+        trace_flag = True
+    if (args.interfaces):
+        interfaces_flag = True
+        parse_interfaces_handler(args.interfaces)
     if (args.ufm):
         ufm_flag = True
     if (args.with_inband):
@@ -5904,6 +6161,10 @@ def get_parsed_args():
         parser.add_option("--ibdiagnet_ext", help="add ibdiagnet ext command to the output.", action='store_true')
         parser.add_option("--with_inband", help="add in-band cable info to the output.", action='store_true')
         parser.add_option("--no_ib", help="do not add server IB commands to the output.", action='store_true')
+        parser.add_option("--keep_info", help="do not delete logs that were gathered, even if sysinfo run is canceled in the middle. ", action='store_true')
+        parser.add_option("--trace", help="gather /sys/kernel/debug/tracing/trace file even if the size is huge(more than 100 MB),\
+                                        if the file not huge it will be gathered by defualt", action='store_true')
+        parser.add_option('--interfaces', dest='interfaces' ,help='set List of interfaces either ETH netdev based or RDMA - mlx5 based that you want to run sysinfo on (comma separated list)')
         parser.add_option("--openstack", help="gather openstack relevant conf and log files", action='store_true')
         parser.add_option("--asap", help="gather asap relevant commands output", action='store_true')
         parser.add_option("--asap_tc", help="gather asap tc filter commands output", action='store_true')
@@ -5946,6 +6207,10 @@ def get_parsed_args():
         parser.add_argument("--ibdiagnet_ext", help="add ibdiagnet ext command to the output.", action='store_true')
         parser.add_argument("--ibdiagnet", help="add ibdiagnet command to the output.", action='store_true')
         parser.add_argument("--no_ib", help="do not add server IB commands to the output.", action='store_true')
+        parser.add_argument("--keep_info", help="do not delete logs that were gathered, even if sysinfo run is canceled in the middle. ", action='store_true')
+        parser.add_argument("--trace", help="gather /sys/kernel/debug/tracing/trace file even if the size is huge(more than 150 KB),\
+                                        if the file not huge it will be gathered by defualt", action='store_true')
+        parser.add_argument('--interfaces',  nargs='?', help='set List of interfaces either ETH netdev based or RDMA - mlx5 based that you want to run sysinfo on(comma separated list)')
         parser.add_argument("--openstack", help="gather openstack relevant conf and log files", action='store_true')
         parser.add_argument("--asap", help="gather asap relevant commands output", action='store_true')
         parser.add_argument("--asap_tc", help="gather asap tc filter commands output", action='store_true')
