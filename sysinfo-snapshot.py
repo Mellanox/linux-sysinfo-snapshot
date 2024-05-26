@@ -1699,6 +1699,7 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
                     f.write("Error in creating new file in the system")
                     f.write("\n\n")
                     return("Error in creating new file in the system", "Error in creating new file in the system", 1)
+        
         elif tool_used =='mft':
             try:
                 f = open(path + file_name + "/firmware/mstdump_" + filtered_file_name, "w+")
@@ -1824,6 +1825,24 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
                 f.write("\n\n")
                 return("Error in creating new file in the system", "Error in creating new file in the system", 1)
 
+def generate_mst_config(card,ports ,sleep_period, mstregdump_out, mst_status_output):
+    for port in ports:
+        if is_MFT_installed:
+            if card + "." + port not in mst_status_output:
+                return
+        elif is_MST_installed:
+            if card + "." + port in vf_pf_devices:
+                return
+        output = card + "." + port
+        filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
+        output_file, tool_used, is_error = general_fw_commands_handler('fwconfig', card + "." + port, filtered_file_name)
+        if is_error == 0:
+            if tool_used == 'mst':
+                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstconfig_" + output + "</a></td><br />")
+            else:
+                mstregdump_out.append("<td><a href=\""+ output_file +"\">mlxconfig_" + output + "</a></td><br />")
+            time.sleep(sleep_period)
+
 def generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output):
     if is_MFT_installed:
         if card not in mst_status_output:
@@ -1831,15 +1850,6 @@ def generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output):
     elif is_MST_installed:
         if card in vf_pf_devices:
             return
-    output = card
-    filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
-    output_file, tool_used, is_error = general_fw_commands_handler('fwconfig', card, filtered_file_name)
-    if is_error == 0:
-        if tool_used == 'mst':
-            mstregdump_out.append("<td><a href=\""+ output_file +"\">mstconfig_" + output + "</a></td><br />")
-        else:
-            mstregdump_out.append("<td><a href=\""+ output_file +"\">mlxconfig_" + output + "</a></td><br />")
-        time.sleep(sleep_period)
     output = card
     filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
     output_file, tool_used, is_error = general_fw_commands_handler('fwflint_q', card, filtered_file_name)
@@ -1867,31 +1877,32 @@ def generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output):
         mstregdump_out.append("<td><a href=\""+ output_file +"\">mlxdump_" + output + "_pcie_uc</a></td><br />")
         time.sleep(sleep_period)
 
-def generate_mst_dumps(card, sleep_period, mstregdump_out, mst_status_output,temp):
-    if is_MFT_installed:
-        if card not in mst_status_output: 
-            return
-    elif is_MST_installed:
-        if card in vf_pf_devices:
-            return
-    for i in range(0, 3):
-        output = card + temp + str(i + 1)
-        filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
-        output_file, tool_used, is_error = general_fw_commands_handler('fwdump', card, filtered_file_name)
-        if is_error == 0:
-            if tool_used == 'mst':
-                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstregdump_" + output + "</a></td><br />")
-            else:
-                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstdump_" + output + "</a></td><br />")
-            time.sleep(sleep_period)
+def generate_mst_dumps(card, ports,sleep_period, mstregdump_out, mst_status_output,temp):
+    for port in ports:
+        if is_MFT_installed:
+            if card + "." + port not in mst_status_output: 
+                return
+        elif is_MST_installed:
+            if card + "." + port in vf_pf_devices:
+                return
+        for i in range(0, 3):
+            output = card + "." + port + temp + str(i + 1)
+            filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
+            output_file, tool_used, is_error = general_fw_commands_handler('fwdump', card + "." + port, filtered_file_name)
+            if is_error == 0:
+                if tool_used == 'mst':
+                    mstregdump_out.append("<td><a href=\""+ output_file +"\">mstregdump_" + output + "</a></td><br />")
+                else:
+                    mstregdump_out.append("<td><a href=\""+ output_file +"\">mstdump_" + output + "</a></td><br />")
+                time.sleep(sleep_period)
 #**********************************************************
 #        mst_commands_query_output Handlers
 def mst_func_handler():
     all_devices = []
     mstregdump_out = []
     sleep_period = 2
-    threads_logs = []
     threads_dumps = []
+    threads_config = []
 
     if (len(pci_devices) < 1):
         mstregdump_out.append("There are no Mellanox cards.\n")
@@ -1905,8 +1916,27 @@ def mst_func_handler():
             all_devices += mtusb_devices
     mst_status_rs, mst_status_output = get_status_output("mst status -v")
     temp = '_run_'
+
+    cards_port_dict = {}
+    for device in all_devices:
+        card, port = device.split(".")
+        if not card in cards_port_dict:
+            cards_port_dict[card] = []
+        cards_port_dict[card].append(port)
+
+    for card in cards_port_dict:
+        t_dumps = threading.Thread(target = generate_mst_dumps, args = [card ,cards_port_dict[card], sleep_period, mstregdump_out, mst_status_output,temp])
+        t_dumps.start()
+        threads_dumps.append(t_dumps)
+    for thread in threads_dumps:
+        thread.join()
+    for card in cards_port_dict:
+        t_dumps = threading.Thread(target = generate_mst_config, args = [card ,cards_port_dict[card], sleep_period, mstregdump_out, mst_status_output])
+        t_dumps.start()
+        threads_config.append(t_dumps)
+    for thread in threads_config:
+        thread.join()
     for card in all_devices:
-        generate_mst_dumps(card, sleep_period, mstregdump_out, mst_status_output,temp)
         generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output)
 
     if mstregdump_out == []:
@@ -6235,13 +6265,10 @@ def get_parsed_args():
         return args
 
 def main():
-
     parsed_args = get_parsed_args()
-
     if (parsed_args.version):
         print('Sysinfo-snapshot version: ' + version)
     else:
         execute(parsed_args)
-
 if __name__ == '__main__':
     main()
