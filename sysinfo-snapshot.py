@@ -4244,9 +4244,9 @@ def show_error_message(err_msg):
 ###########################################################
 ############## Main Function's Handlers ###################
 
-def remove_unwanted_temp_files(file):
+def remove_unwanted_temp_files(file,filePath):
     if (file.startswith("tmp.") or file.startswith("hsqldb.")):
-        os.remove( path + file)
+        os.remove( filePath + file)
 
 # Remove all unwanted side effect files and folders
 def remove_unwanted_files():
@@ -4255,11 +4255,11 @@ def remove_unwanted_files():
     # Remove all unwanted side effect files
     if (path != "/tmp/" and os.path.exists(path) == True):
         for file in os.listdir(path):
-            remove_unwanted_temp_files(file)
+            remove_unwanted_temp_files(file , path)
     for tmp_file_name in os.listdir('/tmp/'):
         if(re.search("^status-log-.*" + file_name + "$", tmp_file_name)):
             os.remove("/tmp/" + tmp_file_name)
-        remove_unwanted_temp_files(tmp_file_name)
+        remove_unwanted_temp_files( tmp_file_name, "/tmp/" )
     # Remove untared directory out file
     shutil.rmtree( path + file_name)
 
