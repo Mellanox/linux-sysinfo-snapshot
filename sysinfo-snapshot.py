@@ -3744,7 +3744,8 @@ def arrange_fabric_commands_section():
             related_flag = "no_ib/ibdiagnet"
         if is_command_allowed(cmd,related_flag):
             if verbose_count == 2:
-                add_fabric_multi_sub_command_if_exists(cmd)
+                print("\t\t" + cmd + " - start")
+            add_fabric_multi_sub_command_if_exists(cmd)
             if verbose_count == 2:
                 print ("\t\t" + cmd + " - end")
     if verbose_flag:
@@ -5848,7 +5849,9 @@ def parse_interfaces_handler(interfaces):
         lspci_out = lspci_out.splitlines()
         for line in lspci_out:
             all_pci_dev.append("0000:" + line.strip().split()[0])
-    all_mst_dev = os.listdir("/dev/mst")
+    all_mst_dev = []
+    if os.path.isdir('/dev/mst'):
+        all_mst_dev = os.listdir("/dev/mst")
     # check the entered interfaces 
     for interface in interfaces:
         interface = interface.strip()
@@ -6162,7 +6165,7 @@ def get_parsed_args():
         parser.add_option("--with_inband", help="add in-band cable info to the output.", action='store_true')
         parser.add_option("--no_ib", help="do not add server IB commands to the output.", action='store_true')
         parser.add_option("--keep_info", help="do not delete logs that were gathered, even if sysinfo run is canceled in the middle. ", action='store_true')
-        parser.add_option("--trace", help="gather /sys/kernel/debug/tracing/trace file even if the size is huge(more than 100 MB),\
+        parser.add_option("--trace", help="gather /sys/kernel/debug/tracing/trace file even if the size is huge(more than 150 KB),\
                                         if the file not huge it will be gathered by defualt", action='store_true')
         parser.add_option('--interfaces', dest='interfaces' ,help='set List of interfaces either ETH netdev based or RDMA - mlx5 based that you want to run sysinfo on (comma separated list)')
         parser.add_option("--openstack", help="gather openstack relevant conf and log files", action='store_true')
