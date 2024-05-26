@@ -313,6 +313,10 @@ def arrange_command_status_log():
         log_content = temp_log.read()
 
     with open(path + file_name + "/status-log-" + file_name, 'w') as log:
+        #write invoked command 
+        log.write("invoked command:\n")
+        log.write(' '.join(sys.argv))
+        log.write('\n')
         if missing_critical_info:
             log.write("\n\nWarning! The sysinfo-snapshot output failed to collect all essential information from the server.\n")
             log.write("\nFailed critical debugging commands:\n")
