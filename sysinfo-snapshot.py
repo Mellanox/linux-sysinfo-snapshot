@@ -1514,23 +1514,26 @@ def command_with_number_of_runs(number_of_runs, device, command, suffix, pcie_de
     no_log_status_output("mkdir " + path + file_name + "/amber_info")
     command_result =""
     for i in range(0, number_of_runs):
+        suffix_list = []
         if "--amber_collect" in suffix :
+            suffix_list = [" --amber_collect "  + path + file_name +"/amber_info/amber_collect_port" + str(i+1) + "_" + str(device) + ".csv"]
             if pci_device:
-                suffix = " --amber_collect "  + path + file_name +"/amber_info/amber_collect_" + str(i+1) + "_" + str(device) + ".csv --port_type PCIE"
-            else:
-                suffix = " --amber_collect "  + path + file_name +"/amber_info/amber_collect_" + str(i+1) + "_" + str(device) + ".csv"
-        command_result += "\n#" + str(i+1) + " " + command + " -d " + device + suffix + "\n\n"
-        mlx_st, command_result_device = get_status_output(command + " -d " + device + suffix, "30")
-        if pcie_debug:
-            output = command + "_" + device + "_run_" + str(i + 1)
-            filtered_file_name = output.replace(":", "").replace(".", "")
-            save_mlxlink_output_to_file(filtered_file_name,command_result_device)
-        command_result_device = command_result_device.replace("[31m","").replace("[32m","").replace("[33m","").replace("[0m","")
-        if (mlx_st != 0):
-            command_result_device = "Errors detected while running: " + command + " -d " + device + suffix + '"\n' + command_result_device
+                suffix_list.append(" --amber_collect "  + path + file_name +"/amber_info/amber_collect_pcie" + str(i+1) + "_" + str(device) + ".csv --port_type PCIE")
+        else:
+            suffix_list.append(suffix)
+        for suff in suffix_list:
+            command_result += "\n#" + str(i+1) + " " + command + " -d " + device + suff + "\n\n"
+            mlx_st, command_result_device = get_status_output(command + " -d " + device + suff, "30")
+            if pcie_debug:
+                output = command + "_" + device + "_run_" + str(i + 1)
+                filtered_file_name = output.replace(":", "").replace(".", "")
+                save_mlxlink_output_to_file(filtered_file_name,command_result_device)
+            command_result_device = command_result_device.replace("[31m","").replace("[32m","").replace("[33m","").replace("[0m","")
+            if (mlx_st != 0):
+                command_result_device = "Errors detected while running: " + command + " -d " + device + suffix + '"\n' + command_result_device
+                command_result += command_result_device
+                break
             command_result += command_result_device
-            break
-        command_result += command_result_device
     return command_result
 
 #**********************************************************
