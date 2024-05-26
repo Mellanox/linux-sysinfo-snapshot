@@ -71,7 +71,7 @@ def no_log_status_output(command, timeout='10s'):
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.7.7"
+version = "3.7.8"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -2108,7 +2108,10 @@ def add_txt_command_output(command, output):
     clean_file_name = clean_file_name.replace("__", "_")
     full_path = path + file_name + "/commands_txt_output/" + clean_file_name + ".txt"
     command_file = open(full_path, 'w')
-    command_file.write("Invoked Command: " + command + "\n")
+    try:
+        command_file.write("Invoked Command: " + command + "\n")
+    except UnicodeEncodeError:
+        command_file.write("Invoked Command: " + command.encode('utf-8').decode(sys.stdout.encoding) + "\n")
     command_file.write(output)
     command_file.close()
 
