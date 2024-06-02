@@ -71,7 +71,7 @@ def no_log_status_output(command, timeout='10s'):
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.7.7"
+version = "3.7.8"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -313,6 +313,10 @@ def arrange_command_status_log():
         log_content = temp_log.read()
 
     with open(path + file_name + "/status-log-" + file_name, 'w') as log:
+        #write invoked command 
+        log.write("invoked command:\n")
+        log.write(' '.join(sys.argv))
+        log.write('\n')
         if missing_critical_info:
             log.write("\n\nWarning! The sysinfo-snapshot output failed to collect all essential information from the server.\n")
             log.write("\nFailed critical debugging commands:\n")
@@ -1510,23 +1514,26 @@ def command_with_number_of_runs(number_of_runs, device, command, suffix, pcie_de
     no_log_status_output("mkdir " + path + file_name + "/amber_info")
     command_result =""
     for i in range(0, number_of_runs):
+        suffix_list = []
         if "--amber_collect" in suffix :
+            suffix_list = [" --amber_collect "  + path + file_name +"/amber_info/amber_collect_port" + str(i+1) + "_" + str(device) + ".csv"]
             if pci_device:
-                suffix = " --amber_collect "  + path + file_name +"/amber_info/amber_collect_" + str(i+1) + "_" + str(device) + ".csv --port_type PCIE"
-            else:
-                suffix = " --amber_collect "  + path + file_name +"/amber_info/amber_collect_" + str(i+1) + "_" + str(device) + ".csv"
-        command_result += "\n#" + str(i+1) + " " + command + " -d " + device + suffix + "\n\n"
-        mlx_st, command_result_device = get_status_output(command + " -d " + device + suffix, "30")
-        if pcie_debug:
-            output = command + "_" + device + "_run_" + str(i + 1)
-            filtered_file_name = output.replace(":", "").replace(".", "")
-            save_mlxlink_output_to_file(filtered_file_name,command_result_device)
-        command_result_device = command_result_device.replace("[31m","").replace("[32m","").replace("[33m","").replace("[0m","")
-        if (mlx_st != 0):
-            command_result_device = "Errors detected while running: " + command + " -d " + device + suffix + '"\n' + command_result_device
+                suffix_list.append(" --amber_collect "  + path + file_name +"/amber_info/amber_collect_pcie" + str(i+1) + "_" + str(device) + ".csv --port_type PCIE")
+        else:
+            suffix_list.append(suffix)
+        for suff in suffix_list:
+            command_result += "\n#" + str(i+1) + " " + command + " -d " + device + suff + "\n\n"
+            mlx_st, command_result_device = get_status_output(command + " -d " + device + suff, "30")
+            if pcie_debug:
+                output = command + "_" + device + "_run_" + str(i + 1)
+                filtered_file_name = output.replace(":", "").replace(".", "")
+                save_mlxlink_output_to_file(filtered_file_name,command_result_device)
+            command_result_device = command_result_device.replace("[31m","").replace("[32m","").replace("[33m","").replace("[0m","")
+            if (mlx_st != 0):
+                command_result_device = "Errors detected while running: " + command + " -d " + device + suffix + '"\n' + command_result_device
+                command_result += command_result_device
+                break
             command_result += command_result_device
-            break
-        command_result += command_result_device
     return command_result
 
 #**********************************************************
@@ -1699,6 +1706,7 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
                     f.write("Error in creating new file in the system")
                     f.write("\n\n")
                     return("Error in creating new file in the system", "Error in creating new file in the system", 1)
+        
         elif tool_used =='mft':
             try:
                 f = open(path + file_name + "/firmware/mstdump_" + filtered_file_name, "w+")
@@ -1824,6 +1832,24 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
                 f.write("\n\n")
                 return("Error in creating new file in the system", "Error in creating new file in the system", 1)
 
+def generate_mst_config(card,ports ,sleep_period, mstregdump_out, mst_status_output):
+    for port in ports:
+        if is_MFT_installed:
+            if card + "." + port not in mst_status_output:
+                return
+        elif is_MST_installed:
+            if card + "." + port in vf_pf_devices:
+                return
+        output = card + "." + port
+        filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
+        output_file, tool_used, is_error = general_fw_commands_handler('fwconfig', card + "." + port, filtered_file_name)
+        if is_error == 0:
+            if tool_used == 'mst':
+                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstconfig_" + output + "</a></td><br />")
+            else:
+                mstregdump_out.append("<td><a href=\""+ output_file +"\">mlxconfig_" + output + "</a></td><br />")
+            time.sleep(sleep_period)
+
 def generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output):
     if is_MFT_installed:
         if card not in mst_status_output:
@@ -1831,15 +1857,6 @@ def generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output):
     elif is_MST_installed:
         if card in vf_pf_devices:
             return
-    output = card
-    filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
-    output_file, tool_used, is_error = general_fw_commands_handler('fwconfig', card, filtered_file_name)
-    if is_error == 0:
-        if tool_used == 'mst':
-            mstregdump_out.append("<td><a href=\""+ output_file +"\">mstconfig_" + output + "</a></td><br />")
-        else:
-            mstregdump_out.append("<td><a href=\""+ output_file +"\">mlxconfig_" + output + "</a></td><br />")
-        time.sleep(sleep_period)
     output = card
     filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
     output_file, tool_used, is_error = general_fw_commands_handler('fwflint_q', card, filtered_file_name)
@@ -1867,31 +1884,32 @@ def generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output):
         mstregdump_out.append("<td><a href=\""+ output_file +"\">mlxdump_" + output + "_pcie_uc</a></td><br />")
         time.sleep(sleep_period)
 
-def generate_mst_dumps(card, sleep_period, mstregdump_out, mst_status_output,temp):
-    if is_MFT_installed:
-        if card not in mst_status_output: 
-            return
-    elif is_MST_installed:
-        if card in vf_pf_devices:
-            return
-    for i in range(0, 3):
-        output = card + temp + str(i + 1)
-        filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
-        output_file, tool_used, is_error = general_fw_commands_handler('fwdump', card, filtered_file_name)
-        if is_error == 0:
-            if tool_used == 'mst':
-                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstregdump_" + output + "</a></td><br />")
-            else:
-                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstdump_" + output + "</a></td><br />")
-            time.sleep(sleep_period)
+def generate_mst_dumps(card, ports,sleep_period, mstregdump_out, mst_status_output,temp):
+    for port in ports:
+        if is_MFT_installed:
+            if card + "." + port not in mst_status_output: 
+                return
+        elif is_MST_installed:
+            if card + "." + port in vf_pf_devices:
+                return
+        for i in range(0, 3):
+            output = card + "." + port + temp + str(i + 1)
+            filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
+            output_file, tool_used, is_error = general_fw_commands_handler('fwdump', card + "." + port, filtered_file_name)
+            if is_error == 0:
+                if tool_used == 'mst':
+                    mstregdump_out.append("<td><a href=\""+ output_file +"\">mstregdump_" + output + "</a></td><br />")
+                else:
+                    mstregdump_out.append("<td><a href=\""+ output_file +"\">mstdump_" + output + "</a></td><br />")
+                time.sleep(sleep_period)
 #**********************************************************
 #        mst_commands_query_output Handlers
 def mst_func_handler():
     all_devices = []
     mstregdump_out = []
     sleep_period = 2
-    threads_logs = []
     threads_dumps = []
+    threads_config = []
 
     if (len(pci_devices) < 1):
         mstregdump_out.append("There are no Mellanox cards.\n")
@@ -1905,8 +1923,27 @@ def mst_func_handler():
             all_devices += mtusb_devices
     mst_status_rs, mst_status_output = get_status_output("mst status -v")
     temp = '_run_'
+
+    cards_port_dict = {}
+    for device in all_devices:
+        card, port = device.split(".")
+        if not card in cards_port_dict:
+            cards_port_dict[card] = []
+        cards_port_dict[card].append(port)
+
+    for card in cards_port_dict:
+        t_dumps = threading.Thread(target = generate_mst_dumps, args = [card ,cards_port_dict[card], sleep_period, mstregdump_out, mst_status_output,temp])
+        t_dumps.start()
+        threads_dumps.append(t_dumps)
+    for thread in threads_dumps:
+        thread.join()
+    for card in cards_port_dict:
+        t_dumps = threading.Thread(target = generate_mst_config, args = [card ,cards_port_dict[card], sleep_period, mstregdump_out, mst_status_output])
+        t_dumps.start()
+        threads_config.append(t_dumps)
+    for thread in threads_config:
+        thread.join()
     for card in all_devices:
-        generate_mst_dumps(card, sleep_period, mstregdump_out, mst_status_output,temp)
         generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output)
 
     if mstregdump_out == []:
@@ -2071,7 +2108,10 @@ def add_txt_command_output(command, output):
     clean_file_name = clean_file_name.replace("__", "_")
     full_path = path + file_name + "/commands_txt_output/" + clean_file_name + ".txt"
     command_file = open(full_path, 'w')
-    command_file.write("Invoked Command: " + command + "\n")
+    try:
+        command_file.write("Invoked Command: " + command + "\n")
+    except UnicodeEncodeError:
+        command_file.write("Invoked Command: " + command.encode('utf-8').decode(sys.stdout.encoding) + "\n")
     command_file.write(output)
     command_file.close()
 
@@ -3744,7 +3784,8 @@ def arrange_fabric_commands_section():
             related_flag = "no_ib/ibdiagnet"
         if is_command_allowed(cmd,related_flag):
             if verbose_count == 2:
-                add_fabric_multi_sub_command_if_exists(cmd)
+                print("\t\t" + cmd + " - start")
+            add_fabric_multi_sub_command_if_exists(cmd)
             if verbose_count == 2:
                 print ("\t\t" + cmd + " - end")
     if verbose_flag:
@@ -4209,9 +4250,9 @@ def show_error_message(err_msg):
 ###########################################################
 ############## Main Function's Handlers ###################
 
-def remove_unwanted_temp_files(file):
+def remove_unwanted_temp_files(file,filePath):
     if (file.startswith("tmp.") or file.startswith("hsqldb.")):
-        os.remove( path + file)
+        os.remove( filePath + file)
 
 # Remove all unwanted side effect files and folders
 def remove_unwanted_files():
@@ -4220,11 +4261,11 @@ def remove_unwanted_files():
     # Remove all unwanted side effect files
     if (path != "/tmp/" and os.path.exists(path) == True):
         for file in os.listdir(path):
-            remove_unwanted_temp_files(file)
+            remove_unwanted_temp_files(file , path)
     for tmp_file_name in os.listdir('/tmp/'):
         if(re.search("^status-log-.*" + file_name + "$", tmp_file_name)):
             os.remove("/tmp/" + tmp_file_name)
-        remove_unwanted_temp_files(tmp_file_name)
+        remove_unwanted_temp_files( tmp_file_name, "/tmp/" )
     # Remove untared directory out file
     shutil.rmtree( path + file_name)
 
@@ -5848,7 +5889,9 @@ def parse_interfaces_handler(interfaces):
         lspci_out = lspci_out.splitlines()
         for line in lspci_out:
             all_pci_dev.append("0000:" + line.strip().split()[0])
-    all_mst_dev = os.listdir("/dev/mst")
+    all_mst_dev = []
+    if os.path.isdir('/dev/mst'):
+        all_mst_dev = os.listdir("/dev/mst")
     # check the entered interfaces 
     for interface in interfaces:
         interface = interface.strip()
@@ -6162,7 +6205,7 @@ def get_parsed_args():
         parser.add_option("--with_inband", help="add in-band cable info to the output.", action='store_true')
         parser.add_option("--no_ib", help="do not add server IB commands to the output.", action='store_true')
         parser.add_option("--keep_info", help="do not delete logs that were gathered, even if sysinfo run is canceled in the middle. ", action='store_true')
-        parser.add_option("--trace", help="gather /sys/kernel/debug/tracing/trace file even if the size is huge(more than 100 MB),\
+        parser.add_option("--trace", help="gather /sys/kernel/debug/tracing/trace file even if the size is huge(more than 150 KB),\
                                         if the file not huge it will be gathered by defualt", action='store_true')
         parser.add_option('--interfaces', dest='interfaces' ,help='set List of interfaces either ETH netdev based or RDMA - mlx5 based that you want to run sysinfo on (comma separated list)')
         parser.add_option("--openstack", help="gather openstack relevant conf and log files", action='store_true')
@@ -6232,13 +6275,10 @@ def get_parsed_args():
         return args
 
 def main():
-
     parsed_args = get_parsed_args()
-
     if (parsed_args.version):
         print('Sysinfo-snapshot version: ' + version)
     else:
         execute(parsed_args)
-
 if __name__ == '__main__':
     main()
