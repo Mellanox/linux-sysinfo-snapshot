@@ -336,7 +336,7 @@ def arrange_command_status_log():
         os.remove(temp_log_path)
     except BaseException as e:
         with open(temp_log_path ,'a') as temp_log:
-            temp_log.write(f"\nError in removing status log from /tmp. Full path is: {temp_log_path}\n{e}")
+            temp_log.write("\nError in removing status log from /tmp. Full path is: " + temp_log_path + "\n" + str(e))
     
 
 #*****************************************************************************************************
@@ -2110,9 +2110,10 @@ def add_txt_command_output(command, output):
     command_file = open(full_path, 'w')
     try:
         command_file.write("Invoked Command: " + command + "\n")
+        command_file.write(output)
     except UnicodeEncodeError:
         command_file.write("Invoked Command: " + command.encode('utf-8').decode(sys.stdout.encoding) + "\n")
-    command_file.write(output)
+        command_file.write(output.encode('utf-8'))
     command_file.close()
 
 # *******************************************************************
@@ -3464,7 +3465,10 @@ def add_ext_file_handler(field_name, out_file_name, command_output):
     if ( out_file_name != "pkglist" and (not "erformance" in out_file_name) and (not "sr_iov" in out_file_name)):
         f = open(full_Path, 'a+')
         if sys.version_info[0] == 2:
-            f.write(command_output)
+            try:
+                f.write(command_output)
+            except UnicodeEncodeError:
+                f.write(command_output.encode('utf-8'))
         elif sys.version_info[0] == 3:
             f.write(command_output.encode('ascii', 'ignore').decode("utf-8"))
         f.close()
@@ -4252,7 +4256,10 @@ def show_error_message(err_msg):
 
 def remove_unwanted_temp_files(file,filePath):
     if (file.startswith("tmp.") or file.startswith("hsqldb.")):
-        os.remove( filePath + file)
+        if os.path.isfile(filePath + file):
+            os.remove(filePath + file)
+        elif os.path.isdir(filePath + file):
+            os.rmdir(filePath + file)
 
 # Remove all unwanted side effect files and folders
 def remove_unwanted_files():
@@ -5533,9 +5540,9 @@ def confirm_mlnx_cards():
 
 # Create empty log files
 def create_empty_log_files():
-    file_paths = [f"{path}{file_name}/err_messages/dummy_functions",
-                f"{path}{file_name}/err_messages/dummy_paths",
-                f"{path}{file_name}/err_messages/dummy_external_paths"]
+    file_paths = ["{}/{}{}/err_messages/dummy_functions".format(path, file_name, ""),
+              "{}/{}{}/err_messages/dummy_paths".format(path, file_name, ""),
+              "{}/{}{}/err_messages/dummy_external_paths".format(path, file_name, "")]
     for file_path in file_paths:
         with open(file_path, 'a'):
             pass
