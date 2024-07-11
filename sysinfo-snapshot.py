@@ -5686,9 +5686,6 @@ def generate_output():
         no_log_status_output("mkdir " + path + file_name + "/rdma_tool")
     # Create empty log files
     create_empty_log_files()
-    if verbose_flag:
-        print("------------------------------------------------------------\n")
-        print("Loading modules via 'mst start'. (will be reverted to initial state at end of run)\n")
     load_modules()
     if verbose_flag and not generate_config_flag:
         print("Generating sysinfo-snapshot HTML page has started")
