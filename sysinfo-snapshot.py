@@ -18,14 +18,12 @@ import shutil
 import platform
 import csv
 from optparse import OptionParser
-from distutils.version import LooseVersion
 from itertools import chain
 import hashlib
 import datetime
 import inspect
 import threading
 import shutil
-
 
 try:
     import json
@@ -67,7 +65,54 @@ def no_log_status_output(command, timeout='10s'):
         error = "\nError while reading output from command - " + command + "\n"
         return 1, error
 
+###############################################################################
+## function-based wrapper using a custom class to implement this behavior without requiring external packages
+class LooseVersion:
+    def __init__(self, version):
+        self.version = version
+        self.parts = self._parse_version(version)
+    
+    def _parse_version(self, version):
+        """
+        Normalize a version string into components (numeric and non-numeric parts).
+        """
+        return [int(part) if part.isdigit() else part for part in re.split(r'(\d+)', version) if part]
+    
+    def _compare(self, other):
+        """
+        Compare the version with another version.
+        """
+        for self_part, other_part in zip(self.parts, other.parts):
+            if self_part < other_part:
+                return -1
+            elif self_part > other_part:
+                return 1
+        
+        # Handle cases where versions have different lengths
+        if len(self.parts) < len(other.parts):
+            return -1
+        elif len(self.parts) > len(other.parts):
+            return 1
+        
+        return 0
 
+    def __lt__(self, other):
+        return self._compare(other) < 0
+
+    def __le__(self, other):
+        return self._compare(other) <= 0
+
+    def __eq__(self, other):
+        return self._compare(other) == 0
+
+    def __ne__(self, other):
+        return self._compare(other) != 0
+
+    def __gt__(self, other):
+        return self._compare(other) > 0
+
+    def __ge__(self, other):
+        return self._compare(other) >= 0
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
