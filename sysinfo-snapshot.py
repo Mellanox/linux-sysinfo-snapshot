@@ -71,7 +71,7 @@ def no_log_status_output(command, timeout='10s'):
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.7.8"
+version = "3.7.9"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -249,7 +249,7 @@ commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --
                         "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "ip -6 addr show", "ip -6 route show", "modinfo", "show_pretty_gids", "flint -v",  "mstflint -v","dkms status",\
                         "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status", "mlxlink / mstlink", "mget_temp_query", "mlnx_qos_handler", "devlink_handler", "se_linux_status", \
                         "ufm_logs", "virsh version","virsh list --all", "virsh vcpupin", "sys_class_infiniband_ib_paameters", "sys_class_net_ecn_ib","roce counters","route -n","numastat -n","NetworkManager --print-config","networkManager_system_connections","USER","mlxreg -d --reg_name ROCE_ACCL --get"\
-                        ,"congestion_control_parameters","ecn_configuration","lsblk", "journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
+                        ,"mlxreg -d -y --get --op 'cmd_type' --reg_name PPCC","congestion_control_parameters","doca_pcc_counter","ecn_configuration","lsblk", "journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
                         ,"nvidia-smi topo -m", "nvidia-smi", "lspci -tv |grep 'NVIDIA' -A7", "nvidia-smi -q -d clock", "nvidia-smi --format=csv --query-supported-clocks=gr,mem", "ib_write_bw -h | grep -i cuda", "modinfo nv_peer_mem",\
                         "bandwidthTest"\
                         , "/etc/init.d/nv_peer_mem status","cuda_deviceQuery","ibstatus","ibstat","ucx_info -v", "dpkg -l net-tools | cat", "mdadm -D /dev/md*","hwloc-ls -v","systemctl list-units","nvsm dump health","lspci -nnPP -d 15b3:","lspci -nnPP -d ::0302"\
@@ -1986,6 +1986,57 @@ def rshim_log_handler():
     return st,res
 
 #**********************************************************
+#    doca_pcc_counter_handler
+
+def doca_pcc_counter_handler():
+    result = []
+    st = 0
+    """
+    Handles DOCA PCC counters for devices (CX6-DX, CX7, BF-3), runs commands,
+    and returns HTML text for output with clickable links for each device.
+    """
+    devices = []
+    st, mst_output = get_status_output("mst status -v")
+    if st != 0:
+        return "<p>Error: Failed to get devices. {}</p>".format(mst_output)
+
+    # Parse the output to find CX6-DX, CX7, BF-3 devices
+    for line in mst_output.splitlines():
+        if any(device_type in line for device_type in ["ConnectX6DX", "ConnectX7", "BlueField3"]):
+            parts = line.split()
+            if len(parts) > 1:
+                devices.append(parts[1])  
+
+    if not devices:
+        return 1,"No supported devices (CX6-DX, CX7, BF-3) found"
+    if os.path.isfile("/opt/mellanox/doca/tools/pcc_counters.sh"):
+        if(not os.path.exists(path + file_name + "/doca_pcc_counter/")):
+            no_log_status_output("mkdir " + path + file_name + "/doca_pcc_counter" )
+        for device_path in devices:
+            counters_output = ""
+            filtered_file = device_path.split("/")[-1].replace(".","_")
+            st, res = get_status_output("/opt/mellanox/doca/tools/pcc_counters.sh set {}".format(device_path))
+            if st == 0:
+                st, res = get_status_output("/opt/mellanox/doca/tools/pcc_counters.sh query {}".format(device_path))
+                if st == 0:
+                    counters_output = res
+                else:
+                    counters_output = "Error querying counters: {}".format(res)
+            else:
+                counters_output = "Error setting counters: {}".format(res)
+            try:
+                with open(path + file_name + "/doca_pcc_counter/" + filtered_file, "a+") as outF:
+                    outF.write(" /opt/mellanox/doca/tools/pcc_counters.sh query {}\n".format(device_path) )
+                    outF.write(counters_output)
+                result.append("<td><a href='doca_pcc_counter/" + filtered_file + "'> " + device_path + " </a></td>")
+            except:
+                print("Could not open the file: " + file_name + "doca_pcc_counter/" + filtered_file) 
+    else:
+        res = "/opt/mellanox/doca/tools/pcc_counters.sh" + " does not exist."
+        return 1,res
+    return 0,result
+
+#**********************************************************
 #        show_irq_affinity_all Handlers
 
 def show_irq_affinity_all_handler():
@@ -2329,6 +2380,33 @@ def mlxreg_handler():
         return 0, res
     else:
         return 1, "No MST devices"
+
+def mlxreg_handler_ppcc():
+    result = []
+    cmd_type_values = ['0','3','4','5','0xa']
+    algo_slot_range = 16
+    if(not os.path.exists(path + file_name + "/mlxreg_pcc/")):
+        no_log_status_output("mkdir " + path + file_name + "/mlxreg_pcc" )
+    for pci_device in pci_devices:
+        device = pci_device["device"]
+        filter_file_name = device.replace(".","_").replace(":","_")
+        for cmd_type in cmd_type_values:
+            for algoSlot in range(algo_slot_range):
+                st,res = get_status_output("mlxreg -d " + device +" -y --get --op 'cmd_type=" + cmd_type +"' --reg_name PPCC --indexes 'local_port=1,pnat=0,lp_msb=0,algo_slot="+ str(algoSlot)+",algo_param_index=0'")
+                try:
+                    with open(path + file_name + "/mlxreg_pcc/" + filter_file_name, "a+") as outF:
+                        outF.write("mlxreg -d " + device +" -y --get --op 'cmd_type=" + cmd_type +"' --reg_name PPCC --indexes 'local_port=1,pnat=0,lp_msb=0,algo_slot="+str(algoSlot) +",algo_param_index=0' \n\n")
+                        if cmd_type == '4':  # If cmd_type is '4', write only the first 11 lines
+                            lines = res.splitlines()[:15]  # Split into lines and take the first 11
+                            outF.write("\n".join(lines) + "\n")
+                        else:
+                            outF.write(res + "\n")
+                except:
+                    print("Could not open the file: " + file_name + "mlxreg_pcc/" + filter_file_name)  
+        result.append("<td><a href='mlxreg_pcc/" + filter_file_name + "'> " + device + " </a></td>")
+    if not result:
+        return 1 , "No devices found"
+    return 0, result
 
 
 #**********************************************************
@@ -2684,6 +2762,13 @@ def add_command_if_exists(command):
             command_is_string = False
         else:
             print_err_flag = 1
+    elif "doca_pcc_counter" == command:
+        status, result = doca_pcc_counter_handler()
+        if(status == 0):
+            print_err_flag = 0
+            command_is_string = False
+        else:
+            print_err_flag = 1
     elif "congestion_control_parameters" == command:
         status, result = congestion_control_parameters_handler()
         if(status == 0):
@@ -2778,12 +2863,19 @@ def add_command_if_exists(command):
         else:
             status = 1
             print_err_flag = 1
-    elif "mlxreg -d" in command:
+    elif "mlxreg -d --reg_name ROCE_ACCL" in command:
         status, result = mlxreg_handler()
         if (status == 0):
             print_err_flag = 0
         else:
             status = 1
+            print_err_flag = 1
+    elif "mlxreg -d -y --get --op 'cmd_type' --reg_name PPCC" in command:
+        status, result = mlxreg_handler_ppcc()
+        if(status == 0):
+            print_err_flag = 0
+            command_is_string = False
+        else:
             print_err_flag = 1
     elif (command == "proc_net_bonding_files"):
         status, result = zz_files_handler('/proc/net/bonding/')
@@ -5046,7 +5138,7 @@ def html_write_paragraph(html, base, collection, dict, prev_parag_end):
         # Add command output/content
         if ( (original_collection == available_commands_collection)
             and ( collection[i] in available_commands_collection[not is_command_string])):
-            array_output_links_collection = ["fw_ini_dump","mst_commands_query_output","asap_parameters","asap_tc_information","rdma_tool","ecn_configuration","/etc/mlnx_snap","congestion_control_parameters","show_irq_affinity_all","mlxcables","networkManager_system_connections"]
+            array_output_links_collection = ["fw_ini_dump","mst_commands_query_output","asap_parameters","asap_tc_information","rdma_tool","ecn_configuration","doca_pcc_counter","/etc/mlnx_snap","congestion_control_parameters","show_irq_affinity_all","mlxcables","networkManager_system_connections"]
             html.write("<p>")
             if (collection[i] == "ethtool_all_interfaces") or (collection[i] == "devlink_handler") :
                 content = dict[collection[i]]
