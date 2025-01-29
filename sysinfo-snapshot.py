@@ -18,14 +18,12 @@ import shutil
 import platform
 import csv
 from optparse import OptionParser
-from distutils.version import LooseVersion
 from itertools import chain
 import hashlib
 import datetime
 import inspect
 import threading
 import shutil
-
 
 try:
     import json
@@ -67,11 +65,58 @@ def no_log_status_output(command, timeout='10s'):
         error = "\nError while reading output from command - " + command + "\n"
         return 1, error
 
+###############################################################################
+## function-based wrapper using a custom class to implement this behavior without requiring external packages
+class LooseVersion:
+    def __init__(self, version):
+        self.version = version
+        self.parts = self._parse_version(version)
+    
+    def _parse_version(self, version):
+        """
+        Normalize a version string into components (numeric and non-numeric parts).
+        """
+        return [int(part) if part.isdigit() else part for part in re.split(r'(\d+)', version) if part]
+    
+    def _compare(self, other):
+        """
+        Compare the version with another version.
+        """
+        for self_part, other_part in zip(self.parts, other.parts):
+            if self_part < other_part:
+                return -1
+            elif self_part > other_part:
+                return 1
+        
+        # Handle cases where versions have different lengths
+        if len(self.parts) < len(other.parts):
+            return -1
+        elif len(self.parts) > len(other.parts):
+            return 1
+        
+        return 0
 
+    def __lt__(self, other):
+        return self._compare(other) < 0
+
+    def __le__(self, other):
+        return self._compare(other) <= 0
+
+    def __eq__(self, other):
+        return self._compare(other) == 0
+
+    def __ne__(self, other):
+        return self._compare(other) != 0
+
+    def __gt__(self, other):
+        return self._compare(other) > 0
+
+    def __ge__(self, other):
+        return self._compare(other) >= 0
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.7.8"
+version = "3.7.9"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -249,7 +294,7 @@ commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --
                         "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "ip -6 addr show", "ip -6 route show", "modinfo", "show_pretty_gids", "flint -v",  "mstflint -v","dkms status",\
                         "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status", "mlxlink / mstlink", "mget_temp_query", "mlnx_qos_handler", "devlink_handler", "se_linux_status", \
                         "ufm_logs", "virsh version","virsh list --all", "virsh vcpupin", "sys_class_infiniband_ib_paameters", "sys_class_net_ecn_ib","roce counters","route -n","numastat -n","NetworkManager --print-config","networkManager_system_connections","USER","mlxreg -d --reg_name ROCE_ACCL --get"\
-                        ,"congestion_control_parameters","ecn_configuration","lsblk", "journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
+                        ,"mlxreg -d -y --get --op 'cmd_type' --reg_name PPCC","congestion_control_parameters","doca_pcc_counter","ecn_configuration","lsblk", "journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
                         ,"nvidia-smi topo -m", "nvidia-smi", "lspci -tv |grep 'NVIDIA' -A7", "nvidia-smi -q -d clock", "nvidia-smi --format=csv --query-supported-clocks=gr,mem", "ib_write_bw -h | grep -i cuda", "modinfo nv_peer_mem",\
                         "bandwidthTest"\
                         , "/etc/init.d/nv_peer_mem status","cuda_deviceQuery","ibstatus","ibstat","ucx_info -v", "dpkg -l net-tools | cat", "mdadm -D /dev/md*","hwloc-ls -v","systemctl list-units","nvsm dump health","lspci -nnPP -d 15b3:","lspci -nnPP -d ::0302"\
@@ -527,7 +572,7 @@ def get_installed_cards_ports():
     global installed_cards_ports
     global all_sm_on_fabric
 
-    st, ibstat = get_status_output("ibstat | grep " + '"' + "CA '\|Port " + '"' + " | grep -v GUID")
+    st, ibstat = get_status_output(r'ibstat | grep "CA \'|Port " | grep -v GUID')
     if st != 0:
         if st == CANCELED_STATUS:
             return ibstat
@@ -747,13 +792,13 @@ def update_net_devices():
              if not device in vf_pf_devices:
                 vf_pf_devices.append(device)
         # e.g lrwxrwxrwx  1 root root 0 Oct 26 15:51 ens11f0 -> ../../devices/pci0000:80/0000:80:03.0/0000:81:00.0/net/ens11f0
-        match = re.findall(device + '\/net\/([\w.-]+)',all_interfaces)
+        match = re.findall(r'{}/net/([\w.-]+)'.format(device), all_interfaces)
         if match:
             for interface in match:
                 mellanox_net_devices.append(interface)
 
     # e.g lrwxrwxrwx  1 root root 0 Oct 26 15:51 ens11f0 -> ../../devices/pci0000:80/0000:80:03.0/0000:81:00.0/net/ens11f0
-    match = re.findall('virtual\/net\/([\w.-]+)',all_interfaces)
+    match = re.findall(r'virtual/net/([\w.-]+)', all_interfaces)
     if match:
         for interface in match:
             mellanox_net_devices.append(interface)
@@ -850,31 +895,31 @@ def show_pretty_gids_handler():
                             if os.path.isdir('/sys/class/infiniband/' + device + '/ports/' + port + '/gids'):
                                 for subsubroot, subsubdirs, subsubfiles in os.walk('/sys/class/infiniband/' + device + '/ports/' + port + '/gids'):
                                     for gid_index in subsubfiles:
-                                        gid = 'N\A'
+                                        gid = r'N\A'
                                         try:
                                             with open('/sys/class/infiniband/' + device + '/ports/' + port + '/gids/' + gid_index, 'r') as gid_index_file:
                                                 gid = gid_index_file.readline().strip()
                                         except:
                                             continue
-                                        if gid == '' or gid == 'N\A' or gid == '0000:0000:0000:0000:0000:0000:0000:0000' or gid == 'fe80:0000:0000:0000:0000:0000:0000:0000':
+                                        if gid == '' or gid == r'N\A' or gid == '0000:0000:0000:0000:0000:0000:0000:0000' or gid == 'fe80:0000:0000:0000:0000:0000:0000:0000':
                                             continue
                                         n_gids_found += 1
-                                        gid_type = 'N\A'
+                                        gid_type = r'N\A'
                                         try:
                                             with open('/sys/class/infiniband/' + device + '/ports/' + port + '/gid_attrs/types/' + gid_index, 'r') as gid_type_file:
                                                 gid_type = gid_type_file.readline().strip()
                                         except:
                                             pass
                                         if gid_type == '':
-                                            gid_type = 'N\A'
-                                        gid_ndevs = 'N\A'
+                                            gid_type = r'N\A'
+                                        gid_ndevs = r'N\A'
                                         try:
                                             with open('/sys/class/infiniband/' + device + '/ports/' + port + '/gid_attrs/ndevs/' + gid_index, 'r') as gid_ndevs_file:
                                                 gid_ndevs = gid_ndevs_file.readline().strip()
                                         except:
                                             pass
                                         if gid_ndevs == '':
-                                            gid_ndevs = 'N\A'
+                                            gid_ndevs = r'N\A'
                                         if len(gid_type) < 8:
                                             gid_type += '\t'
                                         if gid.split(':')[0] == '0000':
@@ -967,10 +1012,10 @@ def modinfo_handler():
     for module in modules:
         if modinfo != '':
             modinfo += '\n---------------------------------------------------------------\n\n'
-        modinfo += "modinfo " + module + " | grep 'filename\|version:'\n\n"
-        st, modinfo_module = get_status_output("modinfo " + module + " | grep 'filename\|version:'")
+        modinfo += r"modinfo " + module + r" | grep 'filename\|version:'\n\n"
+        st, modinfo_module = get_status_output(r"modinfo " + module + r" | grep 'filename\|version:'")
         if (st != 0 and st != CANCELED_STATUS):
-            modinfo_module = "Could not run: " + '"' + " modinfo " + module + " | grep 'filename\|version:'"
+            modinfo_module = r"Could not run: " + '"' + r" modinfo " + module + r" | grep 'filename\|version:'"
         modinfo += modinfo_module + "\n"
     return modinfo
 
@@ -1096,7 +1141,7 @@ def lldptool_handler(command):
 #        cma_roce_mode/tos Handler
 
 def cma_roce_handler(func):
-    st, devices = get_status_output("ibstat | grep \"CA '\"")
+    st, devices = get_status_output((r'ibstat | grep "CA \''))
     if st != 0:
         return "Failed to retrieve mlx devices"
     if devices == "":
@@ -1401,7 +1446,7 @@ def mlxcables_options_handler():
             res += 'mlxcables -d ' + mlxcable + ' ' + option + '\n\n'
             res_st, res_mlxcable_option = get_status_output('mlxcables -d ' + mlxcable + ' ' + option)
             if res_st != 0 and res_st != CANCELED_STATUS:
-                res_mlxcable_option = 'Could not run: \"mlxcables -d ' + mlxcable + ' ' + option + '"'
+                res_mlxcable_option = r'Could not run: "mlxcables -d ' + mlxcable + ' ' + option + r'"'
             res += res_mlxcable_option
             flag = 1
     if os.path.isdir(path + file_name + "/cables"):
@@ -1986,6 +2031,57 @@ def rshim_log_handler():
     return st,res
 
 #**********************************************************
+#    doca_pcc_counter_handler
+
+def doca_pcc_counter_handler():
+    result = []
+    st = 0
+    """
+    Handles DOCA PCC counters for devices (CX6-DX, CX7, BF-3), runs commands,
+    and returns HTML text for output with clickable links for each device.
+    """
+    devices = []
+    st, mst_output = get_status_output("mst status -v")
+    if st != 0:
+        return "<p>Error: Failed to get devices. {}</p>".format(mst_output)
+
+    # Parse the output to find CX6-DX, CX7, BF-3 devices
+    for line in mst_output.splitlines():
+        if any(device_type in line for device_type in ["ConnectX6DX", "ConnectX7", "BlueField3"]):
+            parts = line.split()
+            if len(parts) > 1:
+                devices.append(parts[1])  
+
+    if not devices:
+        return 1,"No supported devices (CX6-DX, CX7, BF-3) found"
+    if os.path.isfile("/opt/mellanox/doca/tools/pcc_counters.sh"):
+        if(not os.path.exists(path + file_name + "/doca_pcc_counter/")):
+            no_log_status_output("mkdir " + path + file_name + "/doca_pcc_counter" )
+        for device_path in devices:
+            counters_output = ""
+            filtered_file = device_path.split("/")[-1].replace(".","_")
+            st, res = get_status_output("/opt/mellanox/doca/tools/pcc_counters.sh set {}".format(device_path))
+            if st == 0:
+                st, res = get_status_output("/opt/mellanox/doca/tools/pcc_counters.sh query {}".format(device_path))
+                if st == 0:
+                    counters_output = res
+                else:
+                    counters_output = "Error querying counters: {}".format(res)
+            else:
+                counters_output = "Error setting counters: {}".format(res)
+            try:
+                with open(path + file_name + "/doca_pcc_counter/" + filtered_file, "a+") as outF:
+                    outF.write(" /opt/mellanox/doca/tools/pcc_counters.sh query {}\n".format(device_path) )
+                    outF.write(counters_output)
+                result.append("<td><a href='doca_pcc_counter/" + filtered_file + "'> " + device_path + " </a></td>")
+            except:
+                print("Could not open the file: " + file_name + "doca_pcc_counter/" + filtered_file) 
+    else:
+        res = "/opt/mellanox/doca/tools/pcc_counters.sh" + " does not exist."
+        return 1,res
+    return 0,result
+
+#**********************************************************
 #        show_irq_affinity_all Handlers
 
 def show_irq_affinity_all_handler():
@@ -2102,7 +2198,7 @@ def yy_ib_modules_parameters_handler():
 #                               add_txt_command_output
 # A function to add command output as txt file
 def add_txt_command_output(command, output):
-    forbidden_chars = re.compile('([\/:*?"<||-])')
+    forbidden_chars = re.compile(r'([\/:*?"<||-])')
     clean_file_name = forbidden_chars.sub(r'', command).replace("\\", "") # clean the file name
     clean_file_name = clean_file_name.replace(" ", "_")
     clean_file_name = clean_file_name.replace("__", "_")
@@ -2128,7 +2224,7 @@ def get_file_content(file_dir):
 # *******************************************************************
 #            Function to clean string prior to using it as a file name
 def filter_file_name(file_name):
-    forbidden_chars = re.compile('([\/:*?"<||-])')
+    forbidden_chars = re.compile(r'([\/:*?"<||-])')
     filtered_file_name = forbidden_chars.sub(r'', file_name).replace("\\", "")
     return filtered_file_name
 
@@ -2329,6 +2425,33 @@ def mlxreg_handler():
         return 0, res
     else:
         return 1, "No MST devices"
+
+def mlxreg_handler_ppcc():
+    result = []
+    cmd_type_values = ['0','3','4','5','0xa']
+    algo_slot_range = 16
+    if(not os.path.exists(path + file_name + "/mlxreg_pcc/")):
+        no_log_status_output("mkdir " + path + file_name + "/mlxreg_pcc" )
+    for pci_device in pci_devices:
+        device = pci_device["device"]
+        filter_file_name = device.replace(".","_").replace(":","_")
+        for cmd_type in cmd_type_values:
+            for algoSlot in range(algo_slot_range):
+                st,res = get_status_output("mlxreg -d " + device +" -y --get --op 'cmd_type=" + cmd_type +"' --reg_name PPCC --indexes 'local_port=1,pnat=0,lp_msb=0,algo_slot="+ str(algoSlot)+",algo_param_index=0'")
+                try:
+                    with open(path + file_name + "/mlxreg_pcc/" + filter_file_name, "a+") as outF:
+                        outF.write("mlxreg -d " + device +" -y --get --op 'cmd_type=" + cmd_type +"' --reg_name PPCC --indexes 'local_port=1,pnat=0,lp_msb=0,algo_slot="+str(algoSlot) +",algo_param_index=0' \n\n")
+                        if cmd_type == '4':  # If cmd_type is '4', write only the first 11 lines
+                            lines = res.splitlines()[:15]  # Split into lines and take the first 11
+                            outF.write("\n".join(lines) + "\n")
+                        else:
+                            outF.write(res + "\n")
+                except:
+                    print("Could not open the file: " + file_name + "mlxreg_pcc/" + filter_file_name)  
+        result.append("<td><a href='mlxreg_pcc/" + filter_file_name + "'> " + device + " </a></td>")
+    if not result:
+        return 1 , "No devices found"
+    return 0, result
 
 
 #**********************************************************
@@ -2684,6 +2807,13 @@ def add_command_if_exists(command):
             command_is_string = False
         else:
             print_err_flag = 1
+    elif "doca_pcc_counter" == command:
+        status, result = doca_pcc_counter_handler()
+        if(status == 0):
+            print_err_flag = 0
+            command_is_string = False
+        else:
+            print_err_flag = 1
     elif "congestion_control_parameters" == command:
         status, result = congestion_control_parameters_handler()
         if(status == 0):
@@ -2778,12 +2908,19 @@ def add_command_if_exists(command):
         else:
             status = 1
             print_err_flag = 1
-    elif "mlxreg -d" in command:
+    elif "mlxreg -d --reg_name ROCE_ACCL" in command:
         status, result = mlxreg_handler()
         if (status == 0):
             print_err_flag = 0
         else:
             status = 1
+            print_err_flag = 1
+    elif "mlxreg -d -y --get --op 'cmd_type' --reg_name PPCC" in command:
+        status, result = mlxreg_handler_ppcc()
+        if(status == 0):
+            print_err_flag = 0
+            command_is_string = False
+        else:
             print_err_flag = 1
     elif (command == "proc_net_bonding_files"):
         status, result = zz_files_handler('/proc/net/bonding/')
@@ -2923,9 +3060,9 @@ def multicast_information_handler():
         return "saquery -g command is not found"
     res = "MLIDs list: \n" + saquery_g + "\n\nMLIDs members for each multicast group:"
 
-    st, MLIDS = get_status_output("saquery -g | grep -i Mlid | sed 's/\./ /g'|awk '{print $2}' | sort | uniq")
+    st, MLIDS = get_status_output(r"saquery -g | grep -i Mlid | sed 's/\./ /g'|awk '{print $2}' | sort | uniq")
     if (st != 0):
-        return "Could not run: " + '"' + "saquery -g | grep -i Mlid | sed 's/\./ /g'|awk '{print $2}' | sort | uniq" + '"'
+        return r'Could not run: "saquery -g | grep -i Mlid | sed \'s/\. /g\'|awk \'{print $2}\' | sort | uniq"'
     MLIDS = MLIDS.split()
 
     for MLID in MLIDS:
@@ -3234,9 +3371,9 @@ def sm_master_is_handler(card, port):
         return "Could not retrieve all SM. Reason: Could not run " + '"' + "/usr/sbin/smpquery nodedesc " + MasterLID + '"'
     res = "IB fabric SM master is: (" + all_sms + ")\nAll SMs in the fabric: "
 
-    st, SMS = get_status_output("saquery -s -C " + card +" -P " + port + " 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'")
+    st, SMS = get_status_output(r"saquery -s -C " + card + r" -P " + port + r" 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'")
     if (st != 0):
-        return "Could not retrieve all SM. Reason: Could not run " + '"' + "saquery -s -C " + card +" -P " + port + " 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'" + '"'
+        return r"Could not retrieve all SM. Reason: Could not run " + r'"' + r"saquery -s -C " + card + r" -P " + port + r" 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'" + '"'
     SMS = set(SMS.split())
 
     for SM in SMS:
@@ -3450,7 +3587,7 @@ def add_internal_file_if_exists(file_full_path):
 
 def add_ext_file_handler(field_name, out_file_name, command_output):
     external_command = ["pcie_debug_dict","sysctl -a","ps -eLo","chkconfig","ucx_info -f","ucx_info -c","numa_node","netstat -anp","lstopo-no-graphics","lstopo-no-graphics -v -c","mlnx_tune -r -i ","zoneinfo","other_system_files","interrupts"]
-    forbidden_chars = re.compile('([\/:*?"<||-])')
+    forbidden_chars = re.compile(r'([\/:*?"<||-])')
     out_file_name = forbidden_chars.sub(r'', out_file_name).replace("\\", "") # clean the file name
     out_file_name = out_file_name.replace(" ","_")
     out_file_name = out_file_name.replace("'","")
@@ -4290,7 +4427,7 @@ def print_invalid_path_and_exit(err_msg):
     sys.exit(1)
 
 def validate_path():
-    taboo_chars = [' ', '#', '%', '&', '{', '}', '<', '>', '*', '?', '$', '!', '`', '"', ':', '@', '+', "'", '|', '=', ',', '.', ';', '\ ', '(', ')']
+    taboo_chars = [r' ', r'#', r'%', r'&', r'{', r'}', r'<', r'>', r'*', r'?', r'$', r'!', r'`', r'"', r':', r'@', r'+', r"'", r'|', r'=', r',', r'.', r';', r'\ ', r'(', r')']
     for ch in taboo_chars:
         if ch in path:
             print_invalid_path_and_exit("Invalid Path: directory name should not contain " + ch)
@@ -5046,7 +5183,7 @@ def html_write_paragraph(html, base, collection, dict, prev_parag_end):
         # Add command output/content
         if ( (original_collection == available_commands_collection)
             and ( collection[i] in available_commands_collection[not is_command_string])):
-            array_output_links_collection = ["fw_ini_dump","mst_commands_query_output","asap_parameters","asap_tc_information","rdma_tool","ecn_configuration","/etc/mlnx_snap","congestion_control_parameters","show_irq_affinity_all","mlxcables","networkManager_system_connections"]
+            array_output_links_collection = ["fw_ini_dump","mst_commands_query_output","asap_parameters","asap_tc_information","rdma_tool","ecn_configuration","doca_pcc_counter","/etc/mlnx_snap","congestion_control_parameters","show_irq_affinity_all","mlxcables","networkManager_system_connections"]
             html.write("<p>")
             if (collection[i] == "ethtool_all_interfaces") or (collection[i] == "devlink_handler") :
                 content = dict[collection[i]]
