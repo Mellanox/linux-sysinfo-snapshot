@@ -527,7 +527,7 @@ def get_installed_cards_ports():
     global installed_cards_ports
     global all_sm_on_fabric
 
-    st, ibstat = get_status_output("ibstat | grep " + '"' + "CA '\|Port " + '"' + " | grep -v GUID")
+    st, ibstat = get_status_output(r'ibstat | grep "CA \'|Port " | grep -v GUID')
     if st != 0:
         if st == CANCELED_STATUS:
             return ibstat
@@ -747,13 +747,13 @@ def update_net_devices():
              if not device in vf_pf_devices:
                 vf_pf_devices.append(device)
         # e.g lrwxrwxrwx  1 root root 0 Oct 26 15:51 ens11f0 -> ../../devices/pci0000:80/0000:80:03.0/0000:81:00.0/net/ens11f0
-        match = re.findall(device + '\/net\/([\w.-]+)',all_interfaces)
+        match = re.findall(r'{}/net/([\w.-]+)'.format(device), all_interfaces)
         if match:
             for interface in match:
                 mellanox_net_devices.append(interface)
 
     # e.g lrwxrwxrwx  1 root root 0 Oct 26 15:51 ens11f0 -> ../../devices/pci0000:80/0000:80:03.0/0000:81:00.0/net/ens11f0
-    match = re.findall('virtual\/net\/([\w.-]+)',all_interfaces)
+    match = re.findall(r'virtual/net/([\w.-]+)', all_interfaces)
     if match:
         for interface in match:
             mellanox_net_devices.append(interface)
@@ -850,31 +850,31 @@ def show_pretty_gids_handler():
                             if os.path.isdir('/sys/class/infiniband/' + device + '/ports/' + port + '/gids'):
                                 for subsubroot, subsubdirs, subsubfiles in os.walk('/sys/class/infiniband/' + device + '/ports/' + port + '/gids'):
                                     for gid_index in subsubfiles:
-                                        gid = 'N\A'
+                                        gid = r'N\A'
                                         try:
                                             with open('/sys/class/infiniband/' + device + '/ports/' + port + '/gids/' + gid_index, 'r') as gid_index_file:
                                                 gid = gid_index_file.readline().strip()
                                         except:
                                             continue
-                                        if gid == '' or gid == 'N\A' or gid == '0000:0000:0000:0000:0000:0000:0000:0000' or gid == 'fe80:0000:0000:0000:0000:0000:0000:0000':
+                                        if gid == '' or gid == r'N\A' or gid == '0000:0000:0000:0000:0000:0000:0000:0000' or gid == 'fe80:0000:0000:0000:0000:0000:0000:0000':
                                             continue
                                         n_gids_found += 1
-                                        gid_type = 'N\A'
+                                        gid_type = r'N\A'
                                         try:
                                             with open('/sys/class/infiniband/' + device + '/ports/' + port + '/gid_attrs/types/' + gid_index, 'r') as gid_type_file:
                                                 gid_type = gid_type_file.readline().strip()
                                         except:
                                             pass
                                         if gid_type == '':
-                                            gid_type = 'N\A'
-                                        gid_ndevs = 'N\A'
+                                            gid_type = r'N\A'
+                                        gid_ndevs = r'N\A'
                                         try:
                                             with open('/sys/class/infiniband/' + device + '/ports/' + port + '/gid_attrs/ndevs/' + gid_index, 'r') as gid_ndevs_file:
                                                 gid_ndevs = gid_ndevs_file.readline().strip()
                                         except:
                                             pass
                                         if gid_ndevs == '':
-                                            gid_ndevs = 'N\A'
+                                            gid_ndevs = r'N\A'
                                         if len(gid_type) < 8:
                                             gid_type += '\t'
                                         if gid.split(':')[0] == '0000':
@@ -967,10 +967,10 @@ def modinfo_handler():
     for module in modules:
         if modinfo != '':
             modinfo += '\n---------------------------------------------------------------\n\n'
-        modinfo += "modinfo " + module + " | grep 'filename\|version:'\n\n"
-        st, modinfo_module = get_status_output("modinfo " + module + " | grep 'filename\|version:'")
+        modinfo += r"modinfo " + module + r" | grep 'filename\|version:'\n\n"
+        st, modinfo_module = get_status_output(r"modinfo " + module + r" | grep 'filename\|version:'")
         if (st != 0 and st != CANCELED_STATUS):
-            modinfo_module = "Could not run: " + '"' + " modinfo " + module + " | grep 'filename\|version:'"
+            modinfo_module = r"Could not run: " + '"' + r" modinfo " + module + r" | grep 'filename\|version:'"
         modinfo += modinfo_module + "\n"
     return modinfo
 
@@ -1096,7 +1096,7 @@ def lldptool_handler(command):
 #        cma_roce_mode/tos Handler
 
 def cma_roce_handler(func):
-    st, devices = get_status_output("ibstat | grep \"CA '\"")
+    st, devices = get_status_output((r'ibstat | grep "CA \''))
     if st != 0:
         return "Failed to retrieve mlx devices"
     if devices == "":
@@ -1401,7 +1401,7 @@ def mlxcables_options_handler():
             res += 'mlxcables -d ' + mlxcable + ' ' + option + '\n\n'
             res_st, res_mlxcable_option = get_status_output('mlxcables -d ' + mlxcable + ' ' + option)
             if res_st != 0 and res_st != CANCELED_STATUS:
-                res_mlxcable_option = 'Could not run: \"mlxcables -d ' + mlxcable + ' ' + option + '"'
+                res_mlxcable_option = r'Could not run: "mlxcables -d ' + mlxcable + ' ' + option + r'"'
             res += res_mlxcable_option
             flag = 1
     if os.path.isdir(path + file_name + "/cables"):
@@ -2153,7 +2153,7 @@ def yy_ib_modules_parameters_handler():
 #                               add_txt_command_output
 # A function to add command output as txt file
 def add_txt_command_output(command, output):
-    forbidden_chars = re.compile('([\/:*?"<||-])')
+    forbidden_chars = re.compile(r'([\/:*?"<||-])')
     clean_file_name = forbidden_chars.sub(r'', command).replace("\\", "") # clean the file name
     clean_file_name = clean_file_name.replace(" ", "_")
     clean_file_name = clean_file_name.replace("__", "_")
@@ -2179,7 +2179,7 @@ def get_file_content(file_dir):
 # *******************************************************************
 #            Function to clean string prior to using it as a file name
 def filter_file_name(file_name):
-    forbidden_chars = re.compile('([\/:*?"<||-])')
+    forbidden_chars = re.compile(r'([\/:*?"<||-])')
     filtered_file_name = forbidden_chars.sub(r'', file_name).replace("\\", "")
     return filtered_file_name
 
@@ -3015,9 +3015,9 @@ def multicast_information_handler():
         return "saquery -g command is not found"
     res = "MLIDs list: \n" + saquery_g + "\n\nMLIDs members for each multicast group:"
 
-    st, MLIDS = get_status_output("saquery -g | grep -i Mlid | sed 's/\./ /g'|awk '{print $2}' | sort | uniq")
+    st, MLIDS = get_status_output(r"saquery -g | grep -i Mlid | sed 's/\./ /g'|awk '{print $2}' | sort | uniq")
     if (st != 0):
-        return "Could not run: " + '"' + "saquery -g | grep -i Mlid | sed 's/\./ /g'|awk '{print $2}' | sort | uniq" + '"'
+        return r'Could not run: "saquery -g | grep -i Mlid | sed \'s/\. /g\'|awk \'{print $2}\' | sort | uniq"'
     MLIDS = MLIDS.split()
 
     for MLID in MLIDS:
@@ -3326,9 +3326,9 @@ def sm_master_is_handler(card, port):
         return "Could not retrieve all SM. Reason: Could not run " + '"' + "/usr/sbin/smpquery nodedesc " + MasterLID + '"'
     res = "IB fabric SM master is: (" + all_sms + ")\nAll SMs in the fabric: "
 
-    st, SMS = get_status_output("saquery -s -C " + card +" -P " + port + " 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'")
+    st, SMS = get_status_output(r"saquery -s -C " + card + r" -P " + port + r" 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'")
     if (st != 0):
-        return "Could not retrieve all SM. Reason: Could not run " + '"' + "saquery -s -C " + card +" -P " + port + " 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'" + '"'
+        return r"Could not retrieve all SM. Reason: Could not run " + r'"' + r"saquery -s -C " + card + r" -P " + port + r" 2>/dev/null |grep base_lid |head -1| sed 's/\./ /g'|awk '{print $2}'" + '"'
     SMS = set(SMS.split())
 
     for SM in SMS:
@@ -3542,7 +3542,7 @@ def add_internal_file_if_exists(file_full_path):
 
 def add_ext_file_handler(field_name, out_file_name, command_output):
     external_command = ["pcie_debug_dict","sysctl -a","ps -eLo","chkconfig","ucx_info -f","ucx_info -c","numa_node","netstat -anp","lstopo-no-graphics","lstopo-no-graphics -v -c","mlnx_tune -r -i ","zoneinfo","other_system_files","interrupts"]
-    forbidden_chars = re.compile('([\/:*?"<||-])')
+    forbidden_chars = re.compile(r'([\/:*?"<||-])')
     out_file_name = forbidden_chars.sub(r'', out_file_name).replace("\\", "") # clean the file name
     out_file_name = out_file_name.replace(" ","_")
     out_file_name = out_file_name.replace("'","")
@@ -4382,7 +4382,7 @@ def print_invalid_path_and_exit(err_msg):
     sys.exit(1)
 
 def validate_path():
-    taboo_chars = [' ', '#', '%', '&', '{', '}', '<', '>', '*', '?', '$', '!', '`', '"', ':', '@', '+', "'", '|', '=', ',', '.', ';', '\ ', '(', ')']
+    taboo_chars = [r' ', r'#', r'%', r'&', r'{', r'}', r'<', r'>', r'*', r'?', r'$', r'!', r'`', r'"', r':', r'@', r'+', r"'", r'|', r'=', r',', r'.', r';', r'\ ', r'(', r')']
     for ch in taboo_chars:
         if ch in path:
             print_invalid_path_and_exit("Invalid Path: directory name should not contain " + ch)
