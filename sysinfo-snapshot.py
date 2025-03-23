@@ -116,7 +116,7 @@ class LooseVersion:
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.7.9"
+version = "3.7.9.1"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -292,7 +292,7 @@ commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --
                         "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all",  "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname", \
                         "yy_MLX_modules_parameters", "sysclass_IB_modules_parameters", "proc_net_bonding_files","Mellanox_Nvidia_pci_buses" ,"sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", \
                         "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "ip -6 addr show", "ip -6 route show", "modinfo", "show_pretty_gids", "flint -v",  "mstflint -v","dkms status",\
-                        "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status", "mlxlink / mstlink", "mget_temp_query", "mlnx_qos_handler", "devlink_handler", "se_linux_status", \
+                        "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status", "mlxlink / mstlink", "mget_temp_query", "mlnx_qos_handler", "devlink_handler", "switchdev_legacy_mode","se_linux_status", \
                         "ufm_logs", "virsh version","virsh list --all", "virsh vcpupin", "sys_class_infiniband_ib_paameters", "sys_class_net_ecn_ib","roce counters","route -n","numastat -n","NetworkManager --print-config","networkManager_system_connections","USER","mlxreg -d --reg_name ROCE_ACCL --get"\
                         ,"mlxreg -d -y --get --op 'cmd_type' --reg_name PPCC","congestion_control_parameters","doca_pcc_counter","ecn_configuration","lsblk", "journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
                         ,"nvidia-smi topo -m", "nvidia-smi", "lspci -tv |grep 'NVIDIA' -A7", "nvidia-smi -q -d clock", "nvidia-smi --format=csv --query-supported-clocks=gr,mem", "ib_write_bw -h | grep -i cuda", "modinfo nv_peer_mem",\
@@ -1019,6 +1019,105 @@ def modinfo_handler():
         modinfo += modinfo_module + "\n"
     return modinfo
 
+def switchdev_legacy_mode_handler():
+    net_path = "/sys/class/net"
+    if os.path.exists(net_path):
+        result = []
+        for dev  in all_net_devices:
+            mode_path = "{}/{}/compat/devlink/mode".format(net_path, dev)
+            if os.path.exists(mode_path):
+                try:
+                    with open(mode_path, "r") as mode_file:
+                        mode = mode_file.read().strip()
+                        result.append("{}: {}".format(dev, mode))
+                except IOError:
+                    result.append("{}: Error reading mode".format(dev))
+            else:
+                result.append("{}: Not Found".format(dev))
+        return 0 ,"\n".join(result)
+    else:
+        return 1, '/sys/class/net does not exist.'
+
+
+#**********************************************************
+#        devlink handler
+
+def devlink_handler():
+    dev_st, devlink_health = get_status_output("devlink health show")
+    if (dev_st != 0):
+        return "There are no devices"
+    dev_st, devlink_health_j = get_status_output("devlink health show -j")
+    if (dev_st != 0):
+        return "There are no devices"
+
+    if (os.path.exists(path + file_name + "/devlink") == False):
+        os.mkdir(path + file_name + "/devlink")
+
+    devlink_health_json = json.loads(devlink_health_j)['health']
+    pci_devices = devlink_health_json.keys()
+    if (len(pci_devices) < 1):
+        return "There are no devices"
+    result = "\n" + devlink_health + "\n"
+    result += "\n--------------------------------------------------\n"
+
+    options = ["diagnose", "dump show"]
+    if interfaces_flag:
+        pci_dev = []
+        for device in pci_devices:
+            if device.split("/")[-1] in specific_pci_devices:
+                pci_dev.append(device)
+        pci_devices = pci_dev
+    for device in pci_devices:
+        for i, reporter in enumerate(devlink_health_json[device]):
+            filtered_device_name = device.replace(":", "").replace(".", "").replace("/", "")
+            if 'name' in reporter.keys():
+                reporter_key = 'name'
+            elif 'reporter' in reporter.keys():
+                reporter_key = 'reporter'
+            else:
+                result += '\nError in parsing ' + device + 'information from: "devlink health show -j"\n'
+                continue
+            if reporter[reporter_key] == "fw_fatal" and 'last_dump_time' in devlink_health_json[device][i].keys():
+                command = "devlink health dump show %s reporter %s " % (device, reporter[reporter_key])
+                dump_output_result = command + "\n\n"
+                dump_output_st, dump_output = get_status_output(command)
+                if (dump_output_st != 0):
+                    dump_output_result += "Error while reading output from command - " + command + "\n"
+                dump_output = dump_output.split()
+                space = dump_output[1]
+                snapshot_id = dump_output[3]
+                #devlink health dump show pci/0000:06:00.0/cr-space snapshot 1
+                dump_output_st, dump_output = get_status_output("devlink region dump " + device + "/" + space + " snapshot " + snapshot_id)
+                if (dump_output_st != 0):
+                    dump_output_result += "Error while reading output from command - " + command + "\n"
+                dump_output_result += dump_output
+                devlink_file_name = filtered_device_name + "_" + option.replace(" ", "_") + "_" + reporter[reporter_key] + ".txt"
+                full_file_name = "devlink/devlink_" + devlink_file_name
+                file = open(path + file_name + "/" + full_file_name, 'w+')
+                file.write(dump_output_result)
+                file.close()
+                result += "<td><a href=" + full_file_name + "> " + devlink_file_name + "</a></td>"
+                result += "\n--------------------------------------------------\n"
+            else:
+                for option in options:
+                    if 'last_dump_time' in devlink_health_json[device][i].keys() or (not option == "dump show"):
+                        command = "devlink health %s %s reporter %s " % ( option, device, reporter[reporter_key])
+                        dump_output_result = command + "\n\n"
+                        dump_output_st, dump_output = get_status_output(command)
+                        if (dump_output_st != 0):
+                            dump_output_result += "Error while reading output from command - " + command + "\n"
+                        dump_output_result += dump_output
+                        devlink_file_name = filtered_device_name + "_" + option.replace(" ", "_") + "_" + reporter[reporter_key] + ".txt"
+                        full_file_name = "devlink/devlink_" + devlink_file_name
+                        file = open(path + file_name + "/" + full_file_name, 'w+')
+                        file.write(dump_output_result)
+                        file.close()
+                        #dump_output_result += "<td><a href=" + full_file_name + "> " file_name + "</a></td>"
+                        result += "<td><a href=" + full_file_name + "> " + devlink_file_name + "</a></td>"
+                        result += "\n--------------------------------------------------\n"
+    return result
+
+#**********************************************************
 
 #**********************************************************
 #        devlink handler
@@ -2701,6 +2800,12 @@ def add_command_if_exists(command):
         status = 0
         print_err_flag = 0
         command_is_string = False
+    elif (command == "switchdev_legacy_mode"):
+        st, result = switchdev_legacy_mode_handler()
+        status = 0
+        if st != 0:
+            status = 1
+            print_err_flag = 1
     elif (command == "show_pretty_gids"):
         result = show_pretty_gids_handler()
         status = 0
