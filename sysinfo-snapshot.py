@@ -2142,7 +2142,7 @@ def doca_pcc_counter_handler():
     devices = []
     st, mst_output = get_status_output("mst status -v")
     if st != 0:
-        return "<p>Error: Failed to get devices. {}</p>".format(mst_output)
+        return 1,"<p>Error: Failed to get devices. {}</p>".format(mst_output)
 
     # Parse the output to find CX6-DX, CX7, BF-3 devices
     for line in mst_output.splitlines():
