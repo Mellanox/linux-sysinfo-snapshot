@@ -3535,7 +3535,7 @@ def ibdiagnet_handler(card, port, ibdiagnet_suffix):
 
     ibdiagnet_command = "ibdiagnet -r --sharp_opt dsc -i "
     if ibdiagnet_ext_flag:
-        ibdiagnet_command = "ibdiagnet --extended_speeds all -P all --pm_per_lane --skip dup_guids,dup_node_desc,lids,sm,pkey,aguid,virt --get_phy_info --pc --pm_pause_time 10 -i "
+        ibdiagnet_command = "ibdiagnet --extended_speeds all -P all --pm_per_lane --skip dup_guids,dup_node_desc,lids,sm,pkey,aguid,virt --get_phy_info --pm_pause_time 10 -i "
 
     if (ibdiagnet_is_invoked == False):
         if (os.path.exists(path + file_name + "/" + ibdiagnet_suffix +"/ibdiagnet") == False):
