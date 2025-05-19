@@ -572,43 +572,32 @@ def get_installed_cards_ports():
     global installed_cards_ports
     global all_sm_on_fabric
 
-    st, ibstat = get_status_output(r'ibstat | grep "CA \'|Port " | grep -v GUID')
-    if st != 0:
-        if st == CANCELED_STATUS:
-            return ibstat
-        return "Could not run: ibstat"
-    str_cards = ibstat.split("CA '")
-    if len(str_cards) > 0:
-        str_cards.pop(0)
-        if len(str_cards) > 0:
-            first = True
-            res = ""
+    sys_ibdir='/sys/class/infiniband'
+    if not os.path.exists(sys_ibdir):
+        return sys_ibdir + " does not exist"
+    
+    ibdevs = os.listdir(sys_ibdir)
+    for card_name in ibdevs:
+        ibdev_path = sys_ibdir + "/" + card_name + "/ports"
+        installed_cards_ports[card_name] = []
+        for port_num in os.listdir(ibdev_path):
             all_sm_on_fabric = []
-            for card in str_cards:
-                card_name = card.split("'")[0]
-                installed_cards_ports[card_name] = []
-                str_ports = card.split("Port ")
-                if len(str_ports) > 0:
-                    str_ports.pop(0)
-                    if len(str_ports) > 0:
-                        for port in str_ports:
-                            port_num = port.split(":")[0]
-                            installed_cards_ports[card_name].append(port_num)
-                            st, ibnetdiscover_output = get_status_output("/usr/sbin/ibnetdiscover -C " + card_name + " -P " + port_num + "")
-                            if st != 0:
-                                continue
-                            ibnetdiscover_output_hashed = hashlib.sha256(ibnetdiscover_output.encode('utf-8')).hexdigest()
-                            if ibnetdiscover_output_hashed not in all_sm_on_fabric:
-                                all_sm_on_fabric.append(ibnetdiscover_output_hashed)
-                                if card_name not in active_subnets:
-                                    active_subnets[card_name] = []
-                                obj = {}
-                                obj["port_num"] = port_num
-                                ibswitches_st, ibswitches = get_ibswitches_output(card_name, port_num)
-                                obj["ibswitches"] = {}
-                                obj["ibswitches"]["ibswitches_st"] = ibswitches_st
-                                obj["ibswitches"]["ibswitches_output"] = ibswitches
-                                active_subnets[card_name].append(obj)
+            installed_cards_ports[card_name].append(port_num)
+            st, ibnetdiscover_output = get_status_output("/usr/sbin/ibnetdiscover -C " + card_name + " -P " + port_num + "")
+            if st != 0:
+                continue
+            ibnetdiscover_output_hashed = hashlib.sha256(ibnetdiscover_output.encode('utf-8')).hexdigest()
+            if ibnetdiscover_output_hashed not in all_sm_on_fabric:
+                all_sm_on_fabric.append(ibnetdiscover_output_hashed)
+                if card_name not in active_subnets:
+                    active_subnets[card_name] = []
+                obj = {}
+                obj["port_num"] = port_num
+                ibswitches_st, ibswitches = get_ibswitches_output(card_name, port_num)
+                obj["ibswitches"] = {}
+                obj["ibswitches"]["ibswitches_st"] = ibswitches_st
+                obj["ibswitches"]["ibswitches_output"] = ibswitches
+                active_subnets[card_name].append(obj)
 
 if os.path.exists("/sys/class/net"):
     sys_class_net_exists = True
