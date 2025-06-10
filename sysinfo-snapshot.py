@@ -1883,7 +1883,7 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
                 f.write("\n\n")
                 return("Error in creating new file in the system", "Error in creating new file in the system", 1)
 
-def generate_mst_config(card,ports ,sleep_period, mstregdump_out, mst_status_output):
+def generate_mst_config(card,ports, mstregdump_out, mst_status_output):
     for port in ports:
         if is_MFT_installed:
             if card + "." + port not in mst_status_output:
@@ -1899,9 +1899,8 @@ def generate_mst_config(card,ports ,sleep_period, mstregdump_out, mst_status_out
                 mstregdump_out.append("<td><a href=\""+ output_file +"\">mstconfig_" + output + "</a></td><br />")
             else:
                 mstregdump_out.append("<td><a href=\""+ output_file +"\">mlxconfig_" + output + "</a></td><br />")
-            time.sleep(sleep_period)
 
-def generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output):
+def generate_card_logs(card, mstregdump_out, mst_status_output):
     if is_MFT_installed:
         if card not in mst_status_output:
             return
@@ -1916,7 +1915,6 @@ def generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output):
             mstregdump_out.append("<td><a href=\""+ output_file +"\">mstflint_" + output + "_q</a></td><br />")
         else:
             mstregdump_out.append("<td><a href=\""+ output_file +"\">flint_" + output + "_q</a></td><br />")
-        time.sleep(sleep_period)
 
     output = card
     filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
@@ -1926,16 +1924,14 @@ def generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output):
             mstregdump_out.append("<td><a href=\""+ output_file +"\">mstflint_" + output + "_dc</a></td><br />")
         else:
             mstregdump_out.append("<td><a href=\""+ output_file +"\">flint_" + output + "_dc</a></td><br />")
-        time.sleep(sleep_period)
 
     output = card
     filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
     output_file, tool_used, is_error = general_fw_commands_handler('mlxdump', card, filtered_file_name)
     if is_error == 0:
         mstregdump_out.append("<td><a href=\""+ output_file +"\">mlxdump_" + output + "_pcie_uc</a></td><br />")
-        time.sleep(sleep_period)
 
-def generate_mst_dumps(card, ports,sleep_period, mstregdump_out, mst_status_output,temp):
+def generate_mst_dumps(card, ports, mstregdump_out, mst_status_output,temp):
     for port in ports:
         if is_MFT_installed:
             if card + "." + port not in mst_status_output: 
@@ -1952,13 +1948,11 @@ def generate_mst_dumps(card, ports,sleep_period, mstregdump_out, mst_status_outp
                     mstregdump_out.append("<td><a href=\""+ output_file +"\">mstregdump_" + output + "</a></td><br />")
                 else:
                     mstregdump_out.append("<td><a href=\""+ output_file +"\">mstdump_" + output + "</a></td><br />")
-                time.sleep(sleep_period)
 #**********************************************************
 #        mst_commands_query_output Handlers
 def mst_func_handler():
     all_devices = []
     mstregdump_out = []
-    sleep_period = 2
 
     if (len(pci_devices) < 1):
         mstregdump_out.append("There are no Mellanox cards.\n")
@@ -1981,11 +1975,11 @@ def mst_func_handler():
         cards_port_dict[card].append(port)
 
     for card in cards_port_dict:
-        generate_mst_dumps(card, cards_port_dict[card][0], sleep_period, mstregdump_out, mst_status_output,temp)
-        generate_mst_config(card, cards_port_dict[card][0], sleep_period, mstregdump_out, mst_status_output)
+        generate_mst_dumps(card, cards_port_dict[card][0], mstregdump_out, mst_status_output,temp)
+        generate_mst_config(card, cards_port_dict[card][0], mstregdump_out, mst_status_output)
 
     for card in all_devices:
-        generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output)
+        generate_card_logs(card, mstregdump_out, mst_status_output)
 
     if mstregdump_out == []:
         mstregdump_out.append("There was no mst query output from this devices\n")
