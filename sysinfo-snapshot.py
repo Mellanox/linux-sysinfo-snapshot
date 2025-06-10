@@ -1959,8 +1959,6 @@ def mst_func_handler():
     all_devices = []
     mstregdump_out = []
     sleep_period = 2
-    threads_dumps = []
-    threads_config = []
 
     if (len(pci_devices) < 1):
         mstregdump_out.append("There are no Mellanox cards.\n")
@@ -1983,17 +1981,9 @@ def mst_func_handler():
         cards_port_dict[card].append(port)
 
     for card in cards_port_dict:
-        t_dumps = threading.Thread(target = generate_mst_dumps, args = [card ,cards_port_dict[card], sleep_period, mstregdump_out, mst_status_output,temp])
-        t_dumps.start()
-        threads_dumps.append(t_dumps)
-    for thread in threads_dumps:
-        thread.join()
-    for card in cards_port_dict:
-        t_dumps = threading.Thread(target = generate_mst_config, args = [card ,cards_port_dict[card], sleep_period, mstregdump_out, mst_status_output])
-        t_dumps.start()
-        threads_config.append(t_dumps)
-    for thread in threads_config:
-        thread.join()
+        generate_mst_dumps(card, cards_port_dict[card], sleep_period, mstregdump_out, mst_status_output,temp)
+        generate_mst_config(card, cards_port_dict[card], sleep_period, mstregdump_out, mst_status_output)
+
     for card in all_devices:
         generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output)
 
