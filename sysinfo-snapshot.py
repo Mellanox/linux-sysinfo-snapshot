@@ -1981,8 +1981,8 @@ def mst_func_handler():
         cards_port_dict[card].append(port)
 
     for card in cards_port_dict:
-        generate_mst_dumps(card, cards_port_dict[card], sleep_period, mstregdump_out, mst_status_output,temp)
-        generate_mst_config(card, cards_port_dict[card], sleep_period, mstregdump_out, mst_status_output)
+        generate_mst_dumps(card, cards_port_dict[card][0], sleep_period, mstregdump_out, mst_status_output,temp)
+        generate_mst_config(card, cards_port_dict[card][0], sleep_period, mstregdump_out, mst_status_output)
 
     for card in all_devices:
         generate_card_logs(card, sleep_period, mstregdump_out, mst_status_output)
