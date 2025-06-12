@@ -572,43 +572,32 @@ def get_installed_cards_ports():
     global installed_cards_ports
     global all_sm_on_fabric
 
-    st, ibstat = get_status_output(r'ibstat | grep "CA \'|Port " | grep -v GUID')
-    if st != 0:
-        if st == CANCELED_STATUS:
-            return ibstat
-        return "Could not run: ibstat"
-    str_cards = ibstat.split("CA '")
-    if len(str_cards) > 0:
-        str_cards.pop(0)
-        if len(str_cards) > 0:
-            first = True
-            res = ""
+    sys_ibdir='/sys/class/infiniband'
+    if not os.path.exists(sys_ibdir):
+        return sys_ibdir + " does not exist"
+    
+    ibdevs = os.listdir(sys_ibdir)
+    for card_name in ibdevs:
+        ibdev_path = sys_ibdir + "/" + card_name + "/ports"
+        installed_cards_ports[card_name] = []
+        for port_num in os.listdir(ibdev_path):
             all_sm_on_fabric = []
-            for card in str_cards:
-                card_name = card.split("'")[0]
-                installed_cards_ports[card_name] = []
-                str_ports = card.split("Port ")
-                if len(str_ports) > 0:
-                    str_ports.pop(0)
-                    if len(str_ports) > 0:
-                        for port in str_ports:
-                            port_num = port.split(":")[0]
-                            installed_cards_ports[card_name].append(port_num)
-                            st, ibnetdiscover_output = get_status_output("/usr/sbin/ibnetdiscover -C " + card_name + " -P " + port_num + "")
-                            if st != 0:
-                                continue
-                            ibnetdiscover_output_hashed = hashlib.sha256(ibnetdiscover_output.encode('utf-8')).hexdigest()
-                            if ibnetdiscover_output_hashed not in all_sm_on_fabric:
-                                all_sm_on_fabric.append(ibnetdiscover_output_hashed)
-                                if card_name not in active_subnets:
-                                    active_subnets[card_name] = []
-                                obj = {}
-                                obj["port_num"] = port_num
-                                ibswitches_st, ibswitches = get_ibswitches_output(card_name, port_num)
-                                obj["ibswitches"] = {}
-                                obj["ibswitches"]["ibswitches_st"] = ibswitches_st
-                                obj["ibswitches"]["ibswitches_output"] = ibswitches
-                                active_subnets[card_name].append(obj)
+            installed_cards_ports[card_name].append(port_num)
+            st, ibnetdiscover_output = get_status_output("/usr/sbin/ibnetdiscover -C " + card_name + " -P " + port_num + "")
+            if st != 0:
+                continue
+            ibnetdiscover_output_hashed = hashlib.sha256(ibnetdiscover_output.encode('utf-8')).hexdigest()
+            if ibnetdiscover_output_hashed not in all_sm_on_fabric:
+                all_sm_on_fabric.append(ibnetdiscover_output_hashed)
+                if card_name not in active_subnets:
+                    active_subnets[card_name] = []
+                obj = {}
+                obj["port_num"] = port_num
+                ibswitches_st, ibswitches = get_ibswitches_output(card_name, port_num)
+                obj["ibswitches"] = {}
+                obj["ibswitches"]["ibswitches_st"] = ibswitches_st
+                obj["ibswitches"]["ibswitches_output"] = ibswitches
+                active_subnets[card_name].append(obj)
 
 if os.path.exists("/sys/class/net"):
     sys_class_net_exists = True
@@ -1116,88 +1105,6 @@ def devlink_handler():
                         result += "<td><a href=" + full_file_name + "> " + devlink_file_name + "</a></td>"
                         result += "\n--------------------------------------------------\n"
     return result
-
-#**********************************************************
-
-#**********************************************************
-#        devlink handler
-
-def devlink_handler():
-    dev_st, devlink_health = get_status_output("devlink health show")
-    if (dev_st != 0):
-        return "There are no devices"
-    dev_st, devlink_health_j = get_status_output("devlink health show -j")
-    if (dev_st != 0):
-        return "There are no devices"
-
-    if (os.path.exists(path + file_name + "/devlink") == False):
-        os.mkdir(path + file_name + "/devlink")
-
-    devlink_health_json = json.loads(devlink_health_j)['health']
-    pci_devices = devlink_health_json.keys()
-    if (len(pci_devices) < 1):
-        return "There are no devices"
-    result = "\n" + devlink_health + "\n"
-    result += "\n--------------------------------------------------\n"
-
-    options = ["diagnose", "dump show"]
-    if interfaces_flag:
-        pci_dev = []
-        for device in pci_devices:
-            if device.split("/")[-1] in specific_pci_devices:
-                pci_dev.append(device)
-        pci_devices = pci_dev
-    for device in pci_devices:
-        for i, reporter in enumerate(devlink_health_json[device]):
-            filtered_device_name = device.replace(":", "").replace(".", "").replace("/", "")
-            if 'name' in reporter.keys():
-                reporter_key = 'name'
-            elif 'reporter' in reporter.keys():
-                reporter_key = 'reporter'
-            else:
-                result += '\nError in parsing ' + device + 'information from: "devlink health show -j"\n'
-                continue
-            if reporter[reporter_key] == "fw_fatal" and 'last_dump_time' in devlink_health_json[device][i].keys():
-                command = "devlink health dump show %s reporter %s " % (device, reporter[reporter_key])
-                dump_output_result = command + "\n\n"
-                dump_output_st, dump_output = get_status_output(command)
-                if (dump_output_st != 0):
-                    dump_output_result += "Error while reading output from command - " + command + "\n"
-                dump_output = dump_output.split()
-                space = dump_output[1]
-                snapshot_id = dump_output[3]
-                #devlink health dump show pci/0000:06:00.0/cr-space snapshot 1
-                dump_output_st, dump_output = get_status_output("devlink region dump " + device + "/" + space + " snapshot " + snapshot_id)
-                if (dump_output_st != 0):
-                    dump_output_result += "Error while reading output from command - " + command + "\n"
-                dump_output_result += dump_output
-                devlink_file_name = filtered_device_name + "_" + option.replace(" ", "_") + "_" + reporter[reporter_key] + ".txt"
-                full_file_name = "devlink/devlink_" + devlink_file_name
-                file = open(path + file_name + "/" + full_file_name, 'w+')
-                file.write(dump_output_result)
-                file.close()
-                result += "<td><a href=" + full_file_name + "> " + devlink_file_name + "</a></td>"
-                result += "\n--------------------------------------------------\n"
-            else:
-                for option in options:
-                    if 'last_dump_time' in devlink_health_json[device][i].keys() or (not option == "dump show"):
-                        command = "devlink health %s %s reporter %s " % ( option, device, reporter[reporter_key])
-                        dump_output_result = command + "\n\n"
-                        dump_output_st, dump_output = get_status_output(command)
-                        if (dump_output_st != 0):
-                            dump_output_result += "Error while reading output from command - " + command + "\n"
-                        dump_output_result += dump_output
-                        devlink_file_name = filtered_device_name + "_" + option.replace(" ", "_") + "_" + reporter[reporter_key] + ".txt"
-                        full_file_name = "devlink/devlink_" + devlink_file_name
-                        file = open(path + file_name + "/" + full_file_name, 'w+')
-                        file.write(dump_output_result)
-                        file.close()
-                        #dump_output_result += "<td><a href=" + full_file_name + "> " file_name + "</a></td>"
-                        result += "<td><a href=" + full_file_name + "> " + devlink_file_name + "</a></td>"
-                        result += "\n--------------------------------------------------\n"
-    return result
-
-#**********************************************************
 
 #**********************************************************
 #        mlnx_qos handler
@@ -3544,9 +3451,10 @@ def ibdiagnet_handler(card, port, ibdiagnet_suffix):
     global ibdiagnet_res
     global ibdiagnet_error
 
-    ibdiagnet_command = "ibdiagnet -r --sharp_opt dsc -i "
+    ibdiagnet_command = "ibdiagnet -r --sharp_opt dsc "
     if ibdiagnet_ext_flag:
-        ibdiagnet_command = "ibdiagnet --extended_speeds all -P all --pm_per_lane --skip dup_guids,dup_node_desc,lids,sm,pkey,aguid,virt --get_phy_info --pc --pm_pause_time 10 -i "
+        ibdiagnet_command += "--extended_speeds all -P all --pm_per_lane --skip dup_guids,dup_node_desc,lids,sm,pkey,virt --get_phy_info --pm_pause_time 10 "
+    ibdiagnet_command +=" -i "
 
     if (ibdiagnet_is_invoked == False):
         if (os.path.exists(path + file_name + "/" + ibdiagnet_suffix +"/ibdiagnet") == False):
