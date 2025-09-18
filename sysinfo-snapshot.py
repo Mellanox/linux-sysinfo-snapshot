@@ -4,6 +4,7 @@
 # Author:    Nizar Swidan  nizars@mellanox.com -- Created: 2015
 # Modified:  Anan Fakheraldin  ananf@mellanox.com -- Modified: 2018
 #            Jeries Haddad     jeriesh@mellanox.com -- Modified: 2019
+#            Ahmad Awwad        ahmadaw@nvidia.com -- Modified: 2025
 __author__ = 'nizars'
 
 import warnings
@@ -11,7 +12,6 @@ import subprocess
 import sys
 import re
 import os
-import collections
 import time
 import signal
 import shutil
@@ -38,6 +38,8 @@ INVOKED_CSV_HEADER = 'Approved'
 FLAG_RELATED_HEADER = "related flag"
 DEFAULT_CONFIG_PATH = './config.csv'
 DEFAULT_PATH = '/tmp/'
+SUCCESS_STATUS = 0
+FAILED_STATUS = 1
 
 ######################################################################################################
 #                                  no_log_status_output
@@ -116,12 +118,13 @@ class LooseVersion:
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.7.9.3"
+version = "3.7.9.4"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
 is_MST_installed = False
 is_MFT_installed = False
+MFT_INSTALLED_MESSAGE = ""
 are_inband_cables_loaded = False # If in-band cables were loaded before user runs snapshot
 mst_devices_exist = False
 all_sm_on_fabric = []
@@ -285,22 +288,36 @@ gpu_command_collection = ["nvidia-smi topo -m","nvidia-smi","lspci -tv |grep 'NV
 ,"bandwidthTest","hwloc-ls"]
 PCIE_debugging_collection =  ["dmidecode", "performance_lspci", "lscpu", "mlxlink / mstlink","mst_commands_query_output","dmesg" ]
 ib_collection = []
-commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "mlxmcg -d", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", \
+commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --version", "ovs-vsctl show", "ovs-dpctl show", "brctl --version", "brctl show", "arp -an", "free", "blkid -c /dev/null | sort", "date", "time", \
                         "df -lh", "mlnx_ethtool_version", "ethtool_version", "ethtool_all_interfaces", "fdisk -l", "hostname", "ibdev2netdev", "ibdev2pcidev", "ibv_devinfo -v", "ifconfig -a", \
                         "initctl list", "ip m s", "ip n s", "iscsiadm --version", "iscsiadm -m host", "iscsiadm -m iface", "iscsiadm -m node", "iscsiadm -m session", "lscpu", "lsmod",  "lspci -tv", \
-                        "mount", "mst_commands_query_output", "asap_parameters", "asap_tc_information","rdma_tool",  "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info",  "ip route show table all", "service --status-all", \
+                        "mount",  "asap_parameters", "asap_tc_information","rdma_tool",  "netstat -i", "netstat -nlp", "netstat -nr", "netstat -s", "numactl --hardware", "ofed_info", "ofed_info -s", "ompi_info",  "ip route show table all", "service --status-all", \
                         "service cpuspeed status", "service iptables status", "service irqbalance status", "show_irq_affinity_all",  "tgtadm --mode target --op show", "tgtadm --version", "tuned-adm active", "ulimit -a", "uname", \
                         "yy_MLX_modules_parameters", "sysclass_IB_modules_parameters", "proc_net_bonding_files","Mellanox_Nvidia_pci_buses" ,"sys_class_net_files", "teamdctl_state", "teamdctl_state_view", "teamdctl_config_dump", "teamdctl_config_dump_actual", "teamdctl_config_dump_noports", \
-                        "mlxconfig_query", "mst status", "mst status -v", "mlxcables", "ip -6 addr show", "ip -6 route show", "modinfo", "show_pretty_gids", "flint -v",  "mstflint -v","dkms status",\
-                        "mlxdump", "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status", "mlxlink / mstlink", "mget_temp_query", "mlnx_qos_handler", "devlink_handler", "switchdev_legacy_mode","se_linux_status", \
-                        "ufm_logs", "virsh version","virsh list --all", "virsh vcpupin", "sys_class_infiniband_ib_paameters", "sys_class_net_ecn_ib","roce counters","route -n","numastat -n","NetworkManager --print-config","networkManager_system_connections","USER","mlxreg -d --reg_name ROCE_ACCL --get"\
-                        ,"mlxreg -d -y --get --op 'cmd_type' --reg_name PPCC","congestion_control_parameters","doca_pcc_counter","ecn_configuration","lsblk", "journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
+                        "ip -6 addr show", "ip -6 route show", "modinfo", "show_pretty_gids", "dkms status",\
+                         "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status", "mlnx_qos_handler", "devlink_handler", "switchdev_legacy_mode","se_linux_status", \
+                        "ufm_logs", "virsh version","virsh list --all", "virsh vcpupin", "sys_class_infiniband_ib_paameters", "sys_class_net_ecn_ib","roce counters","route -n","numastat -n","NetworkManager --print-config","networkManager_system_connections","USER",\
+                        "congestion_control_parameters","doca_pcc_counter","ecn_configuration","lsblk", "journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
                         ,"nvidia-smi topo -m", "nvidia-smi", "lspci -tv |grep 'NVIDIA' -A7", "nvidia-smi -q -d clock", "nvidia-smi --format=csv --query-supported-clocks=gr,mem", "ib_write_bw -h | grep -i cuda", "modinfo nv_peer_mem",\
                         "bandwidthTest"\
                         , "/etc/init.d/nv_peer_mem status","cuda_deviceQuery","ibstatus","ibstat","ucx_info -v", "dpkg -l net-tools | cat", "mdadm -D /dev/md*","hwloc-ls -v","systemctl list-units","nvsm dump health","lspci -nnPP -d 15b3:","lspci -nnPP -d ::0302"\
                         ,"lldptool -ti eth$i","lldptool -tin eth$i","lldptool -t -i eth$i -V APP -c","lldptool -t -i eth$i -V PFC","ip route show","ip -6 -s -s addr show"]
+mft_commands_collection = ["mst_commands_query_output", "mst status", "mst status -v", "mlxcables", "mlxdump", "mlxlink / mstlink", "mget_temp_query", 
+                           "mlxreg -d -y --get --op 'cmd_type' --reg_name PPCC", "mlxmcg -d", "mlxreg -d --reg_name ROCE_ACCL --get", 
+                           "flint -v",  "mstflint -v"]
+commands_collection.extend(mft_commands_collection)
 available_commands_collection = [[],[]]
 available_PCIE_debugging_collection_dict = {}
+
+# Command groups for organized display
+available_mft_commands = []
+available_network_commands = []
+available_system_commands = []
+available_gpu_commands = []
+available_rdma_commands = []
+available_service_commands = []
+available_storage_commands = []
+available_performance_commands = []
 fabric_commands_collection = [ "ib_mc_info_show", "sm_version", "Multicast_Information", "perfquery_cards_ports"]
 fabric_multi_sub_commands_collection = ["ibdiagnet", "ib_find_bad_ports", "ib_find_disabled_ports", "ib_topology_viewer", "ibhosts", "ibswitches", "sminfo", "sm_status", "sm_master_is", "ib_switches_FW_scan"]
 available_fabric_commands_collection = []
@@ -389,10 +406,10 @@ def arrange_command_status_log():
 # A decorater that helps figure out the timing each command took, parent function, input / output of the invoked command
 
 def log(f):
-    def wrap(*args):
+    def wrap(*args, **kwargs):
         time1 = time.time()
         invoke_time = datetime.datetime.now()
-        ret = f(*args)
+        ret = f(*args, **kwargs)
         time2 = time.time()
         st = ret[0]
         res = ret[1]
@@ -438,6 +455,8 @@ def get_status_output(command, timeout='10'):
                 command_exists_dict[base_command] = is_exists
                 if not is_exists:
                     return CANCELED_STATUS , "Command not invoked " + command + " due to " + base_command + " does not exists"
+        if verbose_flag:
+            print("\tExecuting command: %s" % command_with_timeout)
         p = subprocess.Popen([command_with_timeout], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=1024*1024)
         stdout = ""
         stderr = ""
@@ -839,6 +858,16 @@ fabric_commands_dict = {}
 files_dict = {}
 external_files_dict = {}
 
+# Dictionaries for command groups
+mft_commands_dict = {}
+network_commands_dict = {}
+system_commands_dict = {}
+gpu_commands_dict = {}
+rdma_commands_dict = {}
+service_commands_dict = {}
+storage_commands_dict = {}
+performance_commands_dict = {}
+
 l3_dict = {}
 l3_dict[str(section_count) + ". Server Commands: "] = server_commands_dict
 section_count += 1
@@ -1171,24 +1200,43 @@ def cma_roce_handler(func):
     return res
 
 #**********************************************************
-#        mlxdump Handler Helper Function
+#        is_mft_installed Handler Helper Function
 def is_mft_installed():
-    mft_installed = True
     mft_message = "MFT is installed"
-    if not is_MFT_installed:
+    st, output = get_status_output("mst version")
+    if st != 0:
         mft_installed = False
         if non_root:
             mft_message =  "Running as a non-root user - You must be root to use mst tool"
         else:
             mft_message =  "MFT is not installed, please install MFT and try again."
+    else:
+        print("MFT is installed and its version is: %s" % output)
+        mft_installed = True
     return mft_installed, mft_message
+
+
+#**********************************************************
+#        is_mstflint_installed Handler Helper Function
+def is_mstflint_installed():
+    mstflint_message = "MSTFLINT is installed"
+    st, output = get_status_output("mstflint -v")
+    if st != 0:
+        mstflint_installed = False
+        if non_root:
+            mstflint_message =  "Running as a non-root user - You must be root to use mstflint tool"
+        else:
+            mstflint_message =  "MSTFLINT is not installed, please install MSTFLINT and try again."
+    else:
+        print("MSTFLINT is installed and its version is: %s" % output)
+        mstflint_installed = True
+    return mstflint_installed, mstflint_message
 
 #**********************************************************
 #        mlxdump Handler
 def mlxdump_handler():
-    mft_installed, mft_message = is_mft_installed()
-    if not mft_installed:
-        return mft_message
+    if not is_MFT_installed:
+        return MFT_INSTALLED_MESSAGE
     if (len(pci_devices) < 1):
         return "There are no devices"
     options = ["fsdump"]
@@ -1381,16 +1429,15 @@ def ibdev2pcidev_handler():
             cmd = "ls /sys/class/infiniband/"+ device.strip() + "/device" + "/infiniband_verbs/"
             st2, uverbs_mapping = get_status_output(cmd)
             if st2 == 0:
-           	    final_mapping += " ==> " + uverbs_mapping
+                final_mapping += " ==> " + uverbs_mapping
             final_mapping += "\n"
     return final_mapping
 
 #**********************************************************
 #        fwtrace Handlers
 def fwtrace_handler():
-    mft_installed, mft_message = is_mft_installed()
-    if not mft_installed:
-        return mft_message
+    if not is_MFT_installed:
+        return MFT_INSTALLED_MESSAGE
     if (len(pci_devices) < 1):
         return "There are no devices"
 
@@ -1560,6 +1607,29 @@ def lspci_vv_handler():
     return(result)
 
 #**********************************************************
+def _is_amber_collect_supported(device):
+    """
+    Check if amber collect is supported
+    it reads MGIR reg access , if value is 1 or 2 , it is not supported 
+    others, it is supported 
+    """
+    is_amber_collect_supported = True
+    if  is_MFT_installed:
+        mlxreg_base_cmd = "mlxreg"
+    else:
+        mlxreg_base_cmd = "mstreg"
+    mlxreg_cmd = "%s -d %s --get  --reg_name MGIR" % (mlxreg_base_cmd, device)
+    st, res = get_status_output(mlxreg_cmd)
+    if st == 0:
+        technology_regex = re.compile(r"technology\s+\|\s+0x([0-9a-fA-F]+)")
+        technology_match = technology_regex.search(res)
+        if technology_match:
+            technology_value = int(technology_match.group(1), 16)
+            if technology_value == 0 or technology_value == 1 or technology_value == 2:
+                is_amber_collect_supported = False
+    return is_amber_collect_supported
+
+#**********************************************************
 #        Helper for mstcommand_d_handler - handles commands with given number of runs
 def command_with_number_of_runs(number_of_runs, device, command, suffix, pcie_debug, pci_device=False):
     no_log_status_output("mkdir " + path + file_name + "/amber_info")
@@ -1567,13 +1637,19 @@ def command_with_number_of_runs(number_of_runs, device, command, suffix, pcie_de
     for i in range(0, number_of_runs):
         suffix_list = []
         if "--amber_collect" in suffix :
-            suffix_list = [" --amber_collect "  + path + file_name +"/amber_info/amber_collect_port" + str(i+1) + "_" + str(device) + ".csv"]
+            is_amber_collect_supported = _is_amber_collect_supported(device)
+            if is_amber_collect_supported:
+                amber_collect_flag = "--amber_collect"
+            else:
+                amber_collect_flag = "--ber_collect"
+            suffix_list = [" %s " % amber_collect_flag + path + file_name +"/amber_info/amber_collect_port" + str(i+1) + "_" + str(device) + ".csv"]
             if pci_device:
-                suffix_list.append(" --amber_collect "  + path + file_name +"/amber_info/amber_collect_pcie" + str(i+1) + "_" + str(device) + ".csv --port_type PCIE")
+                suffix_list.append(" %s " % amber_collect_flag + path + file_name +"/amber_info/amber_collect_pcie" + str(i+1) + "_" + str(device) + ".csv --port_type PCIE")
         else:
             suffix_list.append(suffix)
         for suff in suffix_list:
             command_result += "\n#" + str(i+1) + " " + command + " -d " + device + suff + "\n\n"
+            mlxlink_command = "mlxlink -d " + device + suff
             mlx_st, command_result_device = get_status_output(command + " -d " + device + suff, "30")
             if pcie_debug:
                 output = command + "_" + device + "_run_" + str(i + 1)
@@ -1590,32 +1666,31 @@ def command_with_number_of_runs(number_of_runs, device, command, suffix, pcie_de
 #**********************************************************
 #        mst command -d <device> Handlers
 def mstcommand_d_handler(command,pcie_debug = False):
-    mft_installed, mft_message = is_mft_installed()
     if (command == 'mlxlink / mstlink'):
-        if mft_installed:
-            st, mlxlink_test = get_status_output('man mlxlink') # If MFT is installed but it is an old version that does NOT include Mlxlink
+        if is_MFT_installed:
+            st, _ = get_status_output('mlxlink -v') # If MFT is installed but it is an old version that does NOT include Mlxlink
             if st == 0:
                 command = 'mlxlink'
-            elif is_MST_installed:
-                st, mstlink_test = get_status_output('man mstlink')
-                if st == 0:
-                    command = 'mstlink'
-                else:
-                    return "could not run mstlink"
             else:
-                return "could not run mlxlink / mstlink"
+                return "could not run mlxlink"
+        elif is_MST_installed:
+            st, _ = get_status_output('mstlink -v') # If MFT is not installed, but MST is installed
+            if st == 0:
+                command = 'mstlink'
+            else:
+                return "could not run mstlink"
         else:
-            if is_MST_installed: # If MFT is not installed, but MST is installed
-                st, mstlink_test = get_status_output('man mstlink')
-                if st == 0:
-                    command = 'mstlink'
-                else:
-                    return "could not run mstlink"
+            return "MFT and MST are not installed - could not run mlxlink / mstlink"
+    elif not is_MFT_installed:
+        if command == "mget_temp":
+            # check if mstmget_temp is installed
+            st, _ = get_status_output('mstmget_temp -h')
+            if st == 0:
+                command = 'mstmget_temp'
             else:
-                return "MFT and MST are not installed - could not run mlxlink / mstlink"
-    else:
-        if not mft_installed:
-            return mft_message
+                return "mstmget_temp is not supported with this MSTFLINT version"
+        else:
+            return MFT_INSTALLED_MESSAGE
     if (len(pci_devices) < 1):
         return "There are no devices"
     suffix_list = []
@@ -1634,7 +1709,7 @@ def mstcommand_d_handler(command,pcie_debug = False):
     # PCIe ports
     for pci_device in pci_devices:
         device = pci_device["device"]
-        if mft_installed:
+        if is_MFT_installed:
             if device  not in mst_status_output:
                 continue
         elif is_MST_installed:
@@ -1665,80 +1740,100 @@ def save_mlxlink_output_to_file(filtered_file_name,result):
     except:
         print("Error in creating new file in the system : " + file_path)
 
-def general_fw_command_output(command, card, timeout = '80'):
+def _handle_tools_cmd(command, card, timeout = '80'):
+    """
+    Handle tools commands wrapper
+    Takes command, card and timeout as input
+    Returns status, output and running_package
+    status: 0 --> Command succeeded, 1 --> Failed
+    output: Output of the command
+    running_package: 'mft' or 'mst'
+    """
     commands_dict = {}
+    # Initialize lists as dictonary values
+    # First index of each list will be the MFT command
+    # Second index of each list will be the MSTFLINT command
+    # Invoke MFT command if installed, otherwise invoke MSTFLINT command
+    # Return 0 --> Command succeeded, 1 --> Failed
+    
+    commands_dict['fwdump'] = ["mstdump " + card, "mstregdump " + card]
+    commands_dict['fwconfig'] = ["mlxconfig -d " + card + " -e  q", "mstconfig -d " + card + " -e  q"]
+    commands_dict['fwflint'] = ["flint -d " + card, "mstflint -d " + card]
+    commands_dict['mlxdump'] = ["mlxdump -d " + card + " pcie_uc --all"]
     fwflint_error = "Couldn't run mstflint / flint. Please make sure MST or MFT are installed."
     fwdump_error = "Couldn't run mstregdump / mstdump. Please make sure MST or MFT are installed."
     fwconfig_error = "Couldn't run mstconfig / mlxconfig. Please make sure MST or MFT are installed."
     mlxdump_error = "Couldn't run mlxdump. Please make sure MFT is installed."
     mlxdump_notsupported_error = "Device not supported, couldn't run mlxdump " + card + " pcie_uc --all"
+    fwflint_dc_error = "Unsupported device, couldn't run mstflint/flint -d " + card + " dc"
     command_error = "Could not run firmware command: " + command
     tool_error = "N/A"
-
-    # Initialize lists as dictonary values
-    # First index of each list will be the MST command
-    # Second index of each list will be the MFT command
-    # Invoke MST command as a priority, if it fails invoke MFT command
-    # Return 0 --> Command succeeded, 1 --> Failed
-
-    commands_dict['fwdump'] = ["mstdump " + card, "mstregdump " + card]
-    commands_dict['fwconfig'] = ["mstconfig -d " + card + " -e  q", "mlxconfig -d " + card + " -e  q"]
-    commands_dict['fwflint'] = ["mstflint -d " + card, "flint -d " + card]
-    commands_dict['mlxdump'] = ["mlxdump -d " + card + " pcie_uc --all"]
+    if is_MFT_installed:
+        fw_query_base_cmd = commands_dict["fwflint"][0] # flint
+        fw_dump_cmd = commands_dict["fwdump"][0] # mstdump
+        fw_config_cmd = commands_dict["fwconfig"][0] # mlxconfig
+        mlxdump_pcie_cmd = commands_dict["mlxdump"][0] # mlxdump
+        running_package = 'mft'
+    else:
+        fw_query_base_cmd = commands_dict["fwflint"][1] # mstflint
+        fw_dump_cmd = commands_dict["fwdump"][1] # mstregdump
+        fw_config_cmd = commands_dict["fwconfig"][1] # mstconfig
+        mlxdump_pcie_cmd = None
+        running_package = 'mst'
+    # Create a dictionary of running commands and their errors
     if command == 'fwflint_q' or command == 'fwflint_dc':
-        if (not is_MFT_installed and not is_MST_installed):
-            return(1, fwflint_error, tool_error)
         if command == 'fwflint_q':
             flint_flags = ' q full'
         else:
             flint_flags = ' dc'
-        st, fw_query = get_status_output(commands_dict["fwflint"][0] + flint_flags, timeout)
-        if st == 0:
-           return(0, fw_query, 'mst')
+        fw_query_full_cmd = "%s %s" % (fw_query_base_cmd, flint_flags)
+    else:
+        fw_query_full_cmd = ""
+    running_command_dict = {"fwflint_q": {"cmd": fw_query_full_cmd, "error": fwflint_error},
+                            "fwflint_dc": {"cmd": fw_query_full_cmd, "error": fwflint_error},
+                            "fwdump": {"cmd": fw_dump_cmd, "error": fwdump_error},
+                            "fwconfig": {"cmd": fw_config_cmd, "error": fwconfig_error},
+                            "mlxdump": {"cmd": mlxdump_pcie_cmd, "error": mlxdump_error}}
+    # if both are not installed, return error
+    if (not is_MFT_installed and not is_MST_installed): 
+        return(FAILED_STATUS, running_command_dict[command]["error"], tool_error)
+    running_command = running_command_dict[command]["cmd"]
+    # Check if running_command is None (e.g., mlxdump when MFT is not installed)
+    if running_command is None:
+        return(FAILED_STATUS, running_command_dict[command]["error"], tool_error)
+    st, command_output = get_status_output(running_command, timeout)
+    if st == SUCCESS_STATUS: # Success
+        return(SUCCESS_STATUS, command_output, running_package)
+    else: # failed
+        if command_output:
+            tool_error = command_output
+        if "mlxdump" in command and "not supported" in tool_error:
+            command_error = mlxdump_notsupported_error
+            ret_status = SUCCESS_STATUS
+        elif "fwflint_dc" in command and "Unsupported" in tool_error:
+            command_error = fwflint_dc_error
+            ret_status = SUCCESS_STATUS
         else:
-            st, fw_query = get_status_output(commands_dict["fwflint"][1] + flint_flags, timeout)
-            if st == 0:
-                return(0, fw_query, 'mft')
-            else:
-                return(1, command_error, tool_error)
+            ret_status = FAILED_STATUS
+        return(ret_status, command_error, tool_error)
+
+def general_fw_command_output(command, card, timeout = '80'):
+    command_error = "Could not run firmware command: " + command
+    tool_error = "N/A"
+    if command == 'fwflint_q' or command == 'fwflint_dc':
+        return _handle_tools_cmd(command, card, timeout)
     elif command == 'fwdump':
-        if (not is_MFT_installed and not is_MST_installed):
-            return(1, fwdump_error, tool_error)
         if(not no_fw_regdumps_flag):
-            st, fw_query = get_status_output(commands_dict['fwdump'][0], timeout)
-            if st == 0:
-                return(0, fw_query, 'mft')
-            else:
-                st, fw_query = get_status_output(commands_dict['fwdump'][1], timeout)
-                if st == 0:
-                    return(0, fw_query, 'mst')
-                else:
-                    return(1, command_error, tool_error)
+            return _handle_tools_cmd(command, card, timeout)
         else:
-            return(1, "no_fw_regdumps_flag is used, the fw regdump commands are not executed.", tool_error)
+            return(FAILED_STATUS, "no_fw_regdumps_flag is used, the fw regdump commands are not executed.", tool_error)
     elif command == 'fwconfig':
-        if (not is_MFT_installed and not is_MST_installed):
-            return(1, fwconfig_error, tool_error)
         if(not no_mstconfig_flag):
-            st, fw_query = get_status_output(commands_dict['fwconfig'][0], timeout)
-            if st == 0:
-                return(0, fw_query, 'mst')
-            else:
-                st, fw_query = get_status_output(commands_dict['fwconfig'][1], timeout)
-                if st == 0:
-                    return(0, fw_query, 'mft')
-                return(1, command_error, tool_error)
+            return _handle_tools_cmd(command, card, timeout)
         else:
-            return(1, "no_mstconfig_flag is used, the mstconfig commands are not executed.", tool_error)   
+            return(FAILED_STATUS, "no_mstconfig_flag is used, the mstconfig commands are not executed.", tool_error)   
     elif command =='mlxdump':
-        if (not is_MFT_installed ):
-            return(1, mlxdump_error, tool_error)
-        st, fw_query = get_status_output(commands_dict['mlxdump'][0], timeout)
-        if st == 0:
-            return(0, fw_query, 'mft')
-        elif 'not supported' in fw_query:
-            return(1, mlxdump_notsupported_error, tool_error)
-        return(1, command_error, tool_error)
+        return _handle_tools_cmd(command, card, timeout)
     else:
         return (1, command_error, tool_error)
 
@@ -1858,8 +1953,13 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
                     return("Error in creating new file in the system", "Error in creating new file in the system", 1)
         else:
             try:
-                f = open(path + file_name + "/firmware/mstflint_flint_" + filtered_file_name, "w+")
-                f.write("Could not run mstflint -d " + card + flint_flags + "and flint -d " + card + flint_flags  + '\n')
+                if tool_used == 'mst':
+                    tools_prefix_name = "mstflint"
+                else:
+                    tools_prefix_name = "flint"
+                f = open(path + file_name + "/firmware/%s_" % tools_prefix_name + filtered_file_name, "w+")
+                f.write("flint -d " + card + flint_flags + "\n")
+                f.write(res + "\n")
                 f.close()
                 return ("firmware/flint_" + filtered_file_name, "mft", 0)
             except:
@@ -1883,22 +1983,14 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
                 f.write("\n\n")
                 return("Error in creating new file in the system", "Error in creating new file in the system", 1)
 
-def generate_mst_config(card,ports, mstregdump_out, mst_status_output):
-    for port in ports:
-        if is_MFT_installed:
-            if card + "." + port not in mst_status_output:
-                return
-        elif is_MST_installed:
-            if card + "." + port in vf_pf_devices:
-                return
-        output = card + "." + port
-        filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
-        output_file, tool_used, is_error = general_fw_commands_handler('fwconfig', card + "." + port, filtered_file_name)
-        if is_error == 0:
-            if tool_used == 'mst':
-                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstconfig_" + output + "</a></td><br />")
-            else:
-                mstregdump_out.append("<td><a href=\""+ output_file +"\">mlxconfig_" + output + "</a></td><br />")
+def generate_mst_config(device, mstregdump_out):
+    filtered_file_name = device.replace(":", "").replace(".", "").replace("/","")
+    output_file, tool_used, is_error = general_fw_commands_handler('fwconfig', device, filtered_file_name)
+    if is_error == 0:
+        if tool_used == 'mst':
+            mstregdump_out.append("<td><a href=\""+ output_file +"\">mstconfig_" + device + "</a></td><br />")
+        else:
+            mstregdump_out.append("<td><a href=\""+ output_file +"\">mlxconfig_" + device + "</a></td><br />")
 
 def generate_card_logs(card, mstregdump_out, mst_status_output):
     if is_MFT_installed:
@@ -1931,25 +2023,34 @@ def generate_card_logs(card, mstregdump_out, mst_status_output):
     if is_error == 0:
         mstregdump_out.append("<td><a href=\""+ output_file +"\">mlxdump_" + output + "_pcie_uc</a></td><br />")
 
-def generate_mst_dumps(card, ports, mstregdump_out, mst_status_output,temp):
-    for port in ports:
-        if is_MFT_installed:
-            if card + "." + port not in mst_status_output: 
-                return
-        elif is_MST_installed:
-            if card + "." + port in vf_pf_devices:
-                return
-        for i in range(0, 3):
-            output = card + "." + port + temp + str(i + 1)
-            filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
-            output_file, tool_used, is_error = general_fw_commands_handler('fwdump', card + "." + port, filtered_file_name)
-            if is_error == 0:
-                if tool_used == 'mst':
-                    mstregdump_out.append("<td><a href=\""+ output_file +"\">mstregdump_" + output + "</a></td><br />")
-                else:
-                    mstregdump_out.append("<td><a href=\""+ output_file +"\">mstdump_" + output + "</a></td><br />")
+def generate_mst_dumps(device, mstregdump_out, temp):
+    for i in range(0, 3):
+        output = device + temp + str(i + 1)
+        filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
+        output_file, tool_used, is_error = general_fw_commands_handler('fwdump', device, filtered_file_name, timeout="800")
+        if is_error == 0:
+            if tool_used == 'mst':
+                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstregdump_" + output + "</a></td><br />")
+            else:
+                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstdump_" + output + "</a></td><br />")
 #**********************************************************
 #        mst_commands_query_output Handlers
+def process_card_worker(args):
+    card, temp, mst_status_output, is_MFT_installed, is_MST_installed, vf_pf_devices = args
+    device = "%s.0" % card
+    local_output = []
+    
+    if is_MFT_installed:
+        if device not in mst_status_output:
+            return local_output
+    elif is_MST_installed:
+        if device in vf_pf_devices:
+            return local_output
+    
+    generate_mst_dumps(device, local_output, temp)
+    generate_mst_config(device, local_output)
+    return local_output
+
 def mst_func_handler():
     all_devices = []
     mstregdump_out = []
@@ -1974,9 +2075,11 @@ def mst_func_handler():
             cards_port_dict[card] = []
         cards_port_dict[card].append(port)
 
+    # Sequential processing (single card or no multiprocessing)
     for card in cards_port_dict:
-        generate_mst_dumps(card, cards_port_dict[card][0], mstregdump_out, mst_status_output,temp)
-        generate_mst_config(card, cards_port_dict[card][0], mstregdump_out, mst_status_output)
+        args = (card, temp, mst_status_output, is_MFT_installed, is_MST_installed, vf_pf_devices)
+        result = process_card_worker(args)
+        mstregdump_out.extend(result)
 
     for card in all_devices:
         generate_card_logs(card, mstregdump_out, mst_status_output)
@@ -2427,7 +2530,8 @@ def mlxreg_handler_ppcc():
         filter_file_name = device.replace(".","_").replace(":","_")
         for cmd_type in cmd_type_values:
             for algoSlot in range(algo_slot_range):
-                st,res = get_status_output("mlxreg -d " + device +" -y --get --op 'cmd_type=" + cmd_type +"' --reg_name PPCC --indexes 'local_port=1,pnat=0,lp_msb=0,algo_slot="+ str(algoSlot)+",algo_param_index=0'")
+                mlxreg_ppc_cmd = "mlxreg -d " + device +" -y --get --op 'cmd_type=" + cmd_type +"' --reg_name PPCC --indexes 'local_port=1,pnat=0,lp_msb=0,algo_slot="+ str(algoSlot)+",algo_param_index=0'"
+                st,res = get_status_output(mlxreg_ppc_cmd)
                 try:
                     with open(path + file_name + "/mlxreg_pcc/" + filter_file_name, "a+") as outF:
                         outF.write("mlxreg -d " + device +" -y --get --op 'cmd_type=" + cmd_type +"' --reg_name PPCC --indexes 'local_port=1,pnat=0,lp_msb=0,algo_slot="+str(algoSlot) +",algo_param_index=0' \n\n")
@@ -3030,6 +3134,7 @@ def add_command_if_exists(command):
     # add command to server commands dictionaty only if exists
     if ((status == 0) or (command.startswith("service"))):
         server_commands_dict[command] = result
+        categorize_and_add_command(command, result)
         if command_is_string:
             available_commands_collection[is_command_string].append(command)
             if not "lspci" in command:
@@ -3854,16 +3959,51 @@ def arrange_pcie_debugging_output():
     add_output_to_pcie_folder("devices_information", pcie_debug_result)
     # add_ext_file_handler("pcie_debug", "pcie_debug", pcie_debug_result)
 
+def categorize_and_add_command(cmd, result):
+    global mft_commands_dict, network_commands_dict, system_commands_dict
+    global gpu_commands_dict, rdma_commands_dict, service_commands_dict
+    global storage_commands_dict, performance_commands_dict
+    global available_mft_commands, available_network_commands, available_system_commands
+    global available_gpu_commands, available_rdma_commands, available_service_commands
+    global available_storage_commands, available_performance_commands
+    
+    cmd_lower = cmd.lower()
+    if cmd in mft_commands_collection:
+        mft_commands_dict[cmd] = result
+        available_mft_commands.append(cmd)
+    elif cmd in gpu_command_collection:
+        gpu_commands_dict[cmd] = result
+        available_gpu_commands.append(cmd)
+    elif ('ip ' in cmd_lower or 'ifconfig' in cmd_lower or 'ethtool' in cmd_lower or 'brctl' in cmd_lower or 'arp' in cmd_lower or 'lldp' in cmd_lower):
+        network_commands_dict[cmd] = result
+        available_network_commands.append(cmd)
+    elif ('ib' in cmd_lower or 'rdma' in cmd_lower or 'ucx' in cmd_lower):
+        rdma_commands_dict[cmd] = result
+        available_rdma_commands.append(cmd)
+    elif ('service' in cmd_lower or 'systemctl' in cmd_lower or 'netstat' in cmd_lower or 'initctl' in cmd_lower):
+        service_commands_dict[cmd] = result
+        available_service_commands.append(cmd)
+    elif ('fdisk' in cmd_lower or 'mount' in cmd_lower or 'df' in cmd_lower or 'lsblk' in cmd_lower or 'blkid' in cmd_lower or 'mdadm' in cmd_lower):
+        storage_commands_dict[cmd] = result
+        available_storage_commands.append(cmd)
+    elif ('numa' in cmd_lower or 'irq' in cmd_lower or 'tuned' in cmd_lower or 'ulimit' in cmd_lower or 'show_irq' in cmd_lower):
+        performance_commands_dict[cmd] = result
+        available_performance_commands.append(cmd)
+    else:
+        system_commands_dict[cmd] = result
+        available_system_commands.append(cmd)
+
 def arrange_server_commands_section():
     update_net_devices()
     if verbose_flag:
         print("\tGenerating server commands section has started")
+    # add server commands list
     #if blueFeild is involved collect the rshim log.
     if is_bluefield_involved:
         commands_collection.append('rshim_log')
         if is_run_from_bluefield_host:
             commands_collection.append('bfver')
-    # add server commands list
+
     for cmd in commands_collection:
         related_flag = ""
         if cmd in pcie_collection:
@@ -5010,7 +5150,20 @@ def initialize_html(html_flag):
     html_flag = 1
     html = open(html_path, 'w+')
     html.write("<html>")
-    html.write("<head><title>" + html_path + "</title></head>")
+    html.write("<head><title>" + html_path + "</title>")
+    html.write("<script>")
+    html.write("function toggleSection(id) {")
+    html.write("var element = document.getElementById(id);")
+    html.write("var header = element.previousElementSibling;")
+    html.write("if (element.style.display === 'none') {")
+    html.write("element.style.display = 'block';")
+    html.write("header.innerHTML = header.innerHTML.replace('[+]', '[-]');")
+    html.write("} else {")
+    html.write("element.style.display = 'none';")
+    html.write("header.innerHTML = header.innerHTML.replace('[-]', '[+]');")
+    html.write("}")
+    html.write("}")
+    html.write("</script></head>")
     html.write("<body><pre>")
     html.write("<a name=" + '"' + "index" + '"' + "></a><h1>Mellanox Technologies</h1>")
     html.write("<br/>")
@@ -5128,6 +5281,34 @@ def html_write_section(html, title, collection, base):
             c=0
     html.write("</tr></table>")
 
+def html_write_subsection(html, title, collection, base):
+    if not collection:
+        return
+    section_id = "section_" + str(base)
+    html.write("<h3 onclick=\"toggleSection('" + section_id + "')\" style=\"cursor: pointer; color: blue;\">")
+    html.write(title + " <span style=\"color: #888; font-size: 0.8em;\">(" + str(len(collection)) + " commands)</span></h3>")
+    html.write("<div id=\"" + section_id + "\" style=\"display: none; margin-left: 20px;\">")
+    html.write("<table cols="+'"'+"4"+'"'+" width=" + '"' + "100%" + '"' + " border=" + '"' + "0" + '"' + " bgcolor="+'"'+"#F0F8FF"+'"'+">")
+    html.write("<tr>")
+    collection.sort()
+    rows = len(collection)//4
+    mod_val = len(collection) % 4
+    c=0
+    r=0
+    for i in range(len(collection)):
+        if (c <= mod_val):
+            cmd = r + c*(rows+1)
+        else:
+            cmd = r + mod_val*(rows+1)+(c-mod_val)*rows
+        sec = base + cmd + 1
+        html.write("<td width=" + '"' + "25%" + '"' + "><a href=" +'"'+ "#sec"+str(sec)+'"'+">" + collection[cmd]  + "</a></td>")
+        c = c+1
+        if ( (c % 4) == 0):
+            html.write("</tr><tr>")
+            r = r+1
+            c=0
+    html.write("</tr></table></div>")
+
 def html_write_prev(html, sec):
     # Add prev button if not first line
     if (sec != 1001):
@@ -5207,7 +5388,13 @@ def html_write_paragraph(html, base, collection, dict, prev_parag_end):
                        html.write("&nbsp;&nbsp;&nbsp;&nbsp;")
             html.write("</p>")
         else:
-            replaced_command_output = dict[collection[i]].replace('\t', "&nbsp;&nbsp;&nbsp;&nbsp;").replace('<', "&lt;").replace('>', "&gt;").replace('\n', '<br/>')
+            command_output = dict[collection[i]]
+            if isinstance(command_output, list):
+                replaced_command_output = ""
+                for value in command_output:
+                    replaced_command_output += str(value) + "&nbsp;&nbsp;&nbsp;&nbsp;"
+            else:
+                replaced_command_output = str(command_output).replace('\t', "&nbsp;&nbsp;&nbsp;&nbsp;").replace('<', "&lt;").replace('>', "&gt;").replace('\n', '<br/>')
             # replace all non-ascii charachters with ""
             html.write("<p>" + re.sub(r'[^\x00-\x7F]+',' ', replaced_command_output) + "</p>")
         sec=sec+1
@@ -5226,7 +5413,18 @@ def build_and_finalize_html():
     available_internal_files_collection.sort()
 
     #=======================BEGIN OF SERVER COMMANDS SECTION ====================
-    html_write_section(html, "1. Server Commands: ", available_commands_collection, 1000)
+    html.write("<h2>1. Server Commands: </h2>")
+    html.write("<table cols="+'"'+"1"+'"'+" width=" + '"' + "100%" + '"' + " border=" + '"' + "0" + '"' + " bgcolor="+'"'+"#E0E0FF"+'"'+">")
+    html.write("<tr><td>")
+    html_write_subsection(html, "Nvidia Firmware Tools", available_mft_commands, 1100)
+    html_write_subsection(html, "Network & Interface Commands", available_network_commands, 1200)
+    html_write_subsection(html, "System Information", available_system_commands, 1300)
+    html_write_subsection(html, "GPU/NVIDIA Commands", available_gpu_commands, 1400)
+    html_write_subsection(html, "RDMA/InfiniBand Commands", available_rdma_commands, 1500)
+    html_write_subsection(html, "Service & Process Management", available_service_commands, 1600)
+    html_write_subsection(html, "Storage & Filesystem", available_storage_commands, 1700)
+    html_write_subsection(html, "Performance & Monitoring", available_performance_commands, 1800)
+    html.write("</td></tr></table>")
 
     #=======================END OF SERVER COMMANDS SECTION =======================
 
@@ -5279,7 +5477,23 @@ def build_and_finalize_html():
     #=======================END OF FILES SECTION =================================
     #=======================Paragraph 1 - Server Commands ========================
 
-    parag_1_end = html_write_paragraph(html, 1000, available_commands_collection, server_commands_dict, 0)
+    parag_1_end = 0
+    if available_mft_commands:
+        parag_1_end = html_write_paragraph(html, 1100, available_mft_commands, mft_commands_dict, parag_1_end)
+    if available_network_commands:
+        parag_1_end = html_write_paragraph(html, 1200, available_network_commands, network_commands_dict, parag_1_end)
+    if available_system_commands:
+        parag_1_end = html_write_paragraph(html, 1300, available_system_commands, system_commands_dict, parag_1_end)
+    if available_gpu_commands:
+        parag_1_end = html_write_paragraph(html, 1400, available_gpu_commands, gpu_commands_dict, parag_1_end)
+    if available_rdma_commands:
+        parag_1_end = html_write_paragraph(html, 1500, available_rdma_commands, rdma_commands_dict, parag_1_end)
+    if available_service_commands:
+        parag_1_end = html_write_paragraph(html, 1600, available_service_commands, service_commands_dict, parag_1_end)
+    if available_storage_commands:
+        parag_1_end = html_write_paragraph(html, 1700, available_storage_commands, storage_commands_dict, parag_1_end)
+    if available_performance_commands:
+        parag_1_end = html_write_paragraph(html, 1800, available_performance_commands, performance_commands_dict, parag_1_end)
 
     #=============================================================================
     #=======================Paragraph 2 - Fabric Commands ========================
@@ -5688,21 +5902,13 @@ def load_modules():
     global is_MST_installed
     global are_inband_cables_loaded
     global mst_devices_exist
-
-    st, output = get_status_output('flint --version')
-    if st != 0:
-        if non_root:
-            print("Running as a non-root user - You must be root to use mst tool")
-        else:
-            print ('MFT is not installed,flint --version failed')
-        is_MFT_installed = False
-    else:
-        is_MFT_installed = True
-    os.system("mst start > /dev/null 2>&1")
+    global MFT_INSTALLED_MESSAGE
+    is_MFT_installed, MFT_INSTALLED_MESSAGE = is_mft_installed()
+    get_status_output("mst start > /dev/null 2>&1", timeout="30")
     if with_inband_flag:
-        os.system("mst cable add --with_ib > /dev/null 2>&1")
+        get_status_output("mst cable add --with_ib > /dev/null 2>&1", timeout="30")
     else:
-        os.system("mst cable add > /dev/null 2>&1")
+        get_status_output("mst cable add > /dev/null 2>&1", timeout="30")
 
     if os.path.isdir('/dev/mst'):
         mst_devices_exist = True
@@ -5716,13 +5922,7 @@ def load_modules():
                 are_inband_cables_loaded = True
                 break
 
-    st, mst_start = get_status_output('mstflint -v')
-    if st != 0:
-        print ('mstflint is not installed.')
-        is_MST_installed = False
-    else:
-        is_MST_installed = True
-
+    is_MST_installed, _ = is_mstflint_installed()
     return
 
 def generate_pcie_debug_info():
@@ -5824,7 +6024,6 @@ def generate_output():
     if verbose_flag and not generate_config_flag:
         print("Generating sysinfo-snapshot HTML page has started")
     initialize_html(html_flag)
-
     # Generate performance tuning analyze html
     if verbose_flag and not generate_config_flag:
         print("\tGenerating performance-tuning-analyze HTML page has started")
@@ -6322,95 +6521,121 @@ def dir_callback(option, opt_str, value, parser):
 
 def get_parsed_args():
     global parser
-
-    if (sys.version_info[0] == 2 and sys.version_info[1] < 7 ):
-        parser = OptionParser(prog='Sysinfo-snapshot', usage=' %prog version: ' + version + ' [options]'
-                                                                        + "\n\tThe sysinfo-snapshot command gathers system information and places it into a tar file."
-                                                                        + "\n\tIt is required to run this script as super user (root) and using python 2.7 or higher version")
-        parser.add_option("-d", "--dir", dest="dir", default='/tmp/', action="callback", callback=dir_callback, help="set destination directory (default is /tmp/).")
-        parser.add_option("-v", "--version", help="show the tool's version information and exit.", action='store_true')
-        parser.add_option("-p", "--perf",  help="include more performance commands/functions, e.g. ib_write_bw and ib_write_lat.", action='store_true')
-        parser.add_option("--ufm", help="add ufm logs to the output.", action='store_true')
-        parser.add_option("--no_fw", help="do not add firmware commands to the output.", action='store_true')
-        parser.add_option("--fsdump", help="add fsdump firmware command to the output.", action='store_true')
-        parser.add_option("--no_fw_regdumps", help="disable regdumps firmware command.", action='store_true')
-        parser.add_option("--no_mstconfig", help="disable mstconfig firmware command.", action='store_true')
-        parser.add_option("--all_var_log", help="collect all logs in /var/log/ dir", action='store_true')
-        parser.add_option("--no_cables", help="disable mlxlink, mget_temp, mlxmcg command that is related to cables.", action='store_true')
-        parser.add_option("--mtusb", help="add I2C mstdump files to the output.", action='store_true')
-        parser.add_option("--ibdiagnet", help="add ibdiagnet command to the output.", action='store_true')
-        parser.add_option("--ibdiagnet_ext", help="add ibdiagnet ext command to the output.", action='store_true')
-        parser.add_option("--with_inband", help="add in-band cable info to the output.", action='store_true')
-        parser.add_option("--no_ib", help="do not add server IB commands to the output.", action='store_true')
-        parser.add_option("--keep_info", help="do not delete logs that were gathered, even if sysinfo run is canceled in the middle. ", action='store_true')
-        parser.add_option("--trace", help="gather /sys/kernel/debug/tracing/trace file even if the size is huge(more than 150 KB),\
-                                        if the file not huge it will be gathered by defualt", action='store_true')
-        parser.add_option('--interfaces', dest='interfaces' ,help='set List of interfaces either ETH netdev based or RDMA - mlx5 based that you want to run sysinfo on (comma separated list)')
-        parser.add_option("--openstack", help="gather openstack relevant conf and log files", action='store_true')
-        parser.add_option("--asap", help="gather asap relevant commands output", action='store_true')
-        parser.add_option("--asap_tc", help="gather asap tc filter commands output", action='store_true')
-        parser.add_option("--rdma_debug", help="gather rdma tool that comes with iproute2 commands output", action='store_true')
-        parser.add_option("--gpu", help="gather Nvidia GPU commands", action='store_true')
-        parser.add_option("--json", help="add json file to the output.", action='store_true')
-        parser.add_option("--pcie", help="add pcie commands/functions to the output.", action='store_true')
-        parser.add_option("--pcie_debug", help="generate only pcie debug info.", action='store_true')
-        parser.add_option("--config", dest="config", action="callback", callback=config_callback, help="set the customized configuration file path including filename, to choose which commands are approved to run.\n"
-                                                                                    + "In case a path is not provided, the default file name(config.csv) and it path are set for the same directory.")
-        parser.add_option("--generate_config", dest="generate_config", action="callback", callback=config_callback, help="Generates configuration file under provided path,Path must be full path, including file name.\n"
-                                                                                           +"Generated config file will include all the commands available in the script listed.\n By default all the commands that run will be marked as yes for execution, unless additional flag is required for them.\n"
-                                                                                            + "In case a path is not provided, a default path is assumed, which is current directory with config.csv file name.")
-        parser.add_option("--check_fw", help="check if the current adapter firmware is the latest version released, output in performance html file [Internet access is required]", action='store_true')
-        parser.add_option("--verbose", help="first verbosity level, available if option is provided only once, lists sections in process.second verbosity level, available if option is provided twice, lists sections and commands in process.", action='count')
-        parser.add_option("--non_root", help=" Allow the tool to run as non_root.", action='store_true')
-        parser.add_argument("-t","--nvsm_dump" , help=" collect nvsm dump health.", action='store_true')
-        (options, args)  = parser.parse_args()
-
-        if (len(args) > 0) and ( not (options.dir) and not (options.config) and not (options.generate_config) ):
+    
+    # Shared argument configuration
+    arguments = [
+        ("-d", "--dir", {"help": "set destination directory (default is /tmp/).", "default": "/tmp/"}),
+        ("-v", "--version", {"help": "show the tool's version information and exit.", "action": "store_true"}),
+        ("-p", "--perf", {"help": "include more performance commands/functions, e.g. ib_write_bw and ib_write_lat.", "action": "store_true"}),
+        ("--ufm", {"help": "add ufm logs to the output.", "action": "store_true"}),
+        ("--no_fw", {"help": "do not add firmware commands to the output.", "action": "store_true"}),
+        ("--fsdump", {"help": "add fsdump firmware command to the output.", "action": "store_true"}),
+        ("--no_fw_regdumps", {"help": "disable regdumps firmware command.", "action": "store_true"}),
+        ("--no_mstconfig", {"help": "disable mstconfig firmware command.", "action": "store_true"}),
+        ("--all_var_log", {"help": "collect all logs in /var/log/ dir", "action": "store_true"}),
+        ("--no_cables", {"help": "disable mlxlink, mget_temp, mlxmcg command that is related to cables.", "action": "store_true"}),
+        ("--mtusb", {"help": "add I2C mstdump files to the output.", "action": "store_true"}),
+        ("--ibdiagnet", {"help": "add ibdiagnet command to the output.", "action": "store_true"}),
+        ("--ibdiagnet_ext", {"help": "add ibdiagnet ext command to the output.", "action": "store_true"}),
+        ("--with_inband", {"help": "add in-band cable info to the output.", "action": "store_true"}),
+        ("--no_ib", {"help": "do not add server IB commands to the output.", "action": "store_true"}),
+        ("--keep_info", {"help": "do not delete logs that were gathered, even if sysinfo run is canceled in the middle.", "action": "store_true"}),
+        ("--trace", {"help": "gather /sys/kernel/debug/tracing/trace file even if the size is huge(more than 150 KB), if the file not huge it will be gathered by default", "action": "store_true"}),
+        ("--interfaces", {"help": "set List of interfaces either ETH netdev based or RDMA - mlx5 based that you want to run sysinfo on (comma separated list)"}),
+        ("--openstack", {"help": "gather openstack relevant conf and log files", "action": "store_true"}),
+        ("--asap", {"help": "gather asap relevant commands output", "action": "store_true"}),
+        ("--asap_tc", {"help": "gather asap tc filter commands output", "action": "store_true"}),
+        ("--rdma_debug", {"help": "gather rdma tool that comes with iproute2 commands output", "action": "store_true"}),
+        ("--gpu", {"help": "gather Nvidia GPU commands", "action": "store_true"}),
+        ("--json", {"help": "add json file to the output.", "action": "store_true"}),
+        ("--pcie", {"help": "add pcie commands/functions to the output.", "action": "store_true"}),
+        ("--pcie_debug", {"help": "generate only pcie debug info.", "action": "store_true"}),
+        ("--config", {"help": "set the customized configuration file path including filename, to choose which commands are approved to run.\nIn case a path is not provided, the default file name(config.csv) and it path are set for the same directory."}),
+        ("--generate_config", {"help": "Generates configuration file under provided path,Path must be full path, including file name.\nGenerated config file will include all the commands available in the script listed.\n By default all the commands that run will be marked as yes for execution, unless additional flag is required for them.\nIn case a path is not provided, a default path is assumed, which is current directory with config.csv file name."}),
+        ("--check_fw", {"help": "check if the current adapter firmware is the latest version released, output in performance html file [Internet access is required]", "action": "store_true"}),
+        ("--verbose", {"help": "first verbosity level, available if option is provided only once, lists sections in process.second verbosity level, available if option is provided twice, lists sections and commands in process.", "action": "count"}),
+        ("--non_root", {"help": "Allow the tool to run as non_root.", "action": "store_true"}),
+        ("-t", "--nvsm_dump", {"help": "collect nvsm dump health.", "action": "store_true"})
+    ]
+    
+    # Common usage string
+    usage_msg = (' version: ' + version + ' [options]'
+                + "\n\tThe sysinfo-snapshot command gathers system information and places it into a tar file."
+                + "\n\tIt is required to run this script as super user (root) and using python 2.7 or higher version")
+    
+    # Check Python version once
+    use_legacy = (sys.version_info[0] == 2 and sys.version_info[1] < 7)
+    
+    if use_legacy: # Python 2.6
+        parser = OptionParser(prog='Sysinfo-snapshot', usage='%prog' + usage_msg)
+        
+        # Add arguments using shared config
+        for arg_config in arguments:
+            if len(arg_config) == 2:  # Single flag
+                flag, config = arg_config
+                adapted_config = config.copy()
+                # Handle special cases for optparse
+                if flag == "--config":
+                    adapted_config.update({"dest": "config", "action": "callback", "callback": config_callback})
+                elif flag == "--generate_config":
+                    adapted_config.update({"dest": "generate_config", "action": "callback", "callback": config_callback})
+                elif flag == "--interfaces":
+                    adapted_config.update({"dest": "interfaces"})
+                elif flag == "-d":
+                    adapted_config.update({"dest": "dir", "action": "callback", "callback": dir_callback})
+                parser.add_option(flag, **adapted_config)
+            else:  # Short and long flags
+                short_flag, long_flag, config = arg_config
+                adapted_config = config.copy()
+                # Handle special cases for optparse
+                if long_flag == "--config":
+                    adapted_config.update({"dest": "config", "action": "callback", "callback": config_callback})
+                elif long_flag == "--generate_config":
+                    adapted_config.update({"dest": "generate_config", "action": "callback", "callback": config_callback})
+                elif long_flag == "--interfaces":
+                    adapted_config.update({"dest": "interfaces"})
+                elif short_flag == "-d":
+                    adapted_config.update({"dest": "dir", "action": "callback", "callback": dir_callback})
+                parser.add_option(short_flag, long_flag, **adapted_config)
+        
+        options, args = parser.parse_args()
+        if (len(args) > 0) and (not options.dir and not options.config and not options.generate_config):
             parser.error("Incorrect number of arguments")
         return options
     else:
         import argparse
-        parser = argparse.ArgumentParser(prog='Sysinfo-snapshot', usage=' %(prog)s version: ' + version + ' [options]'
-                                                                    + "\n\tThe sysinfo-snapshot command gathers system information and places it into a tar file."
-                                                                    + "\n\tIt is required to run this script as super user (root) and using python 2.7 or higher version.")
-        parser.add_argument("-d", "--dir", nargs="?", const="/tmp/", default="/tmp/", help="set destination directory (default is /tmp/).")
-        parser.add_argument("-v", "--version", help="show the tool's version information and exit.", action='store_true')
-        parser.add_argument("-p", "--perf",  help="include more performance commands/functions, e.g. ib_write_bw and ib_write_lat.", action='store_true')
-        parser.add_argument("--ufm", help="add ufm logs to the output.", action='store_true')
-        parser.add_argument("--no_fw", help="do not add firmware commands to the output.", action='store_true')
-        parser.add_argument("--fsdump", help="add fsdump firmware command to the output.", action='store_true')
-        parser.add_argument("--no_fw_regdumps", help="disable regdumps firmware command.", action='store_true')
-        parser.add_argument("--no_mstconfig", help="disable mstconfig firmware command.", action='store_true')
-        parser.add_argument("--no_cables", help="disable mlxlink, mget_temp, mlxmcg command that is related to cables.", action='store_true')
-        parser.add_argument("--all_var_log", help="collect all logs in /var/log/ dir ", action='store_true')
-        parser.add_argument("--mtusb", help="add I2C mstdump files to the output.", action='store_true')
-        parser.add_argument("--with_inband", help="add in-band cable info to the output.", action='store_true')
-        parser.add_argument("--ibdiagnet_ext", help="add ibdiagnet ext command to the output.", action='store_true')
-        parser.add_argument("--ibdiagnet", help="add ibdiagnet command to the output.", action='store_true')
-        parser.add_argument("--no_ib", help="do not add server IB commands to the output.", action='store_true')
-        parser.add_argument("--keep_info", help="do not delete logs that were gathered, even if sysinfo run is canceled in the middle. ", action='store_true')
-        parser.add_argument("--trace", help="gather /sys/kernel/debug/tracing/trace file even if the size is huge(more than 150 KB),\
-                                        if the file not huge it will be gathered by defualt", action='store_true')
-        parser.add_argument('--interfaces',  nargs='?', help='set List of interfaces either ETH netdev based or RDMA - mlx5 based that you want to run sysinfo on(comma separated list)')
-        parser.add_argument("--openstack", help="gather openstack relevant conf and log files", action='store_true')
-        parser.add_argument("--asap", help="gather asap relevant commands output", action='store_true')
-        parser.add_argument("--asap_tc", help="gather asap tc filter commands output", action='store_true')
-        parser.add_argument("--rdma_debug", help="gather rdma tool that comes with iproute2 commands output", action='store_true')
-        parser.add_argument("--gpu", help="gather Nvidia GPU commands", action='store_true')
-        parser.add_argument("--json", help="add json file to the output.", action='store_true')
-        parser.add_argument("--pcie", help="add pcie commands/functions to the output.", action='store_true')
-        parser.add_argument("--pcie_debug", help="generate only pcie debug info.", action='store_true')
-        parser.add_argument("--config", nargs="?", const=DEFAULT_CONFIG_PATH, help="set the customized configuration file path including the filename, to choose which commands are approved to run.\n"
-                                                                                    + "In case a path is not provided, the default file name(config.csv) and it path are set for the same directory.")
-        parser.add_argument("--generate_config", nargs="?", const=DEFAULT_CONFIG_PATH, help="Generates configuration file under provided path,Path must be full path, including file name.\n"
-                                                                                           +"Generated config file will include all the commands available in the script listed.\n By default all the commands that run will be marked as yes for execution,unless additional flag is required for them.\n"
-                                                                                            + "In case a path is not provided, a default path is assumed, which is current directory with config.csv file name.")
-        parser.add_argument("--check_fw", help="check if the current adapter firmware is the latest version released, output in performance html file [Internet access is required]", action='store_true')
-        parser.add_argument("--verbose", help="first verbosity level, available if option is provided only once, lists sections in process.second verbosity level, available if option is provided twice, lists sections and commands in process.", action='count')
-        parser.add_argument("--non_root", help=" allow the tool to run as non-root.", action='store_true')
-        parser.add_argument("-t","--nvsm_dump" ,help=" collect nvsm dump health.", action='store_true')
-        args = parser.parse_args()
-        return args
+        parser = argparse.ArgumentParser(prog='Sysinfo-snapshot', usage='%(prog)s' + usage_msg)
+        
+        # Add arguments using shared config
+        for arg_config in arguments:
+            if len(arg_config) == 2:  # Single flag
+                flag, config = arg_config
+                adapted_config = config.copy()
+                # Handle special cases for argparse
+                if flag == "--config":
+                    adapted_config.update({"nargs": "?", "const": DEFAULT_CONFIG_PATH})
+                elif flag == "--generate_config":
+                    adapted_config.update({"nargs": "?", "const": DEFAULT_CONFIG_PATH})
+                elif flag == "--interfaces":
+                    adapted_config.update({"nargs": "?"})
+                elif flag == "-d":
+                    adapted_config.update({"nargs": "?", "const": "/tmp/"})
+                parser.add_argument(flag, **adapted_config)
+            else:  # Short and long flags
+                short_flag, long_flag, config = arg_config
+                adapted_config = config.copy()
+                # Handle special cases for argparse
+                if long_flag == "--config":
+                    adapted_config.update({"nargs": "?", "const": DEFAULT_CONFIG_PATH})
+                elif long_flag == "--generate_config":
+                    adapted_config.update({"nargs": "?", "const": DEFAULT_CONFIG_PATH})
+                elif long_flag == "--interfaces":
+                    adapted_config.update({"nargs": "?"})
+                elif short_flag == "-d":
+                    adapted_config.update({"nargs": "?", "const": "/tmp/"})
+                parser.add_argument(short_flag, long_flag, **adapted_config)
+        
+        return parser.parse_args()
 
 def main():
     parsed_args = get_parsed_args()
