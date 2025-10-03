@@ -118,7 +118,7 @@ class LooseVersion:
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.7.9.4"
+version = "3.7.9.5"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -139,6 +139,7 @@ pf_devices = []
 asap_devices = []
 mtusb_devices = []
 vf_pf_devices = []
+mft_tools_pci_devices = []
 config_dict = {}
 local_mst_devices = []
 json_flag = False
@@ -741,6 +742,7 @@ def update_net_devices():
     global mst_devices_exist
     global is_bluefield_involved
     global is_run_from_bluefield_host
+    global mft_tools_pci_devices
 
     errors = []
 
@@ -795,6 +797,9 @@ def update_net_devices():
                     mtusb_dev.append(dev)
             mtusb_devices = mtusb_dev
     for lspci_device in pci_devices:
+        is_valid_mft_tools_dev = is_valid_mft_tools_device(lspci_device)
+        if is_valid_mft_tools_dev:
+            mft_tools_pci_devices.append(lspci_device)
         device = lspci_device.split()[0]
         if  "function" in lspci_device.lower():
              if not device in vf_pf_devices:
@@ -1242,6 +1247,10 @@ def mlxdump_handler():
     options = ["fsdump"]
     temp = '_run_'
     for pci_device in pci_devices:
+        is_valid_mft_tools_dev = is_valid_mft_tools_device(pci_device["name"])
+        if not is_valid_mft_tools_dev:
+            # Not valid for mft tools commands
+            continue
         device = pci_device["device"]
         if device in vf_pf_devices:
             continue
@@ -1444,6 +1453,10 @@ def fwtrace_handler():
     options = ["-i all --tracer_mode FIFO"]
     fwtrace = ""
     for pci_device in pci_devices:
+        is_valid_mft_tools_dev = is_valid_mft_tools_device(pci_device["name"])
+        if not is_valid_mft_tools_dev:
+            # Not valid for mft tools commands
+            continue
         device = pci_device["device"]
         if device.split('.')[1].strip() != "0":
             continue
@@ -1708,6 +1721,10 @@ def mstcommand_d_handler(command,pcie_debug = False):
     mst_status_rs, mst_status_output = get_status_output("mst status -v")
     # PCIe ports
     for pci_device in pci_devices:
+        is_valid_mft_tools_dev = is_valid_mft_tools_device(pci_device["name"])
+        if not is_valid_mft_tools_dev:
+            # Not valid for mft tools commands
+            continue
         device = pci_device["device"]
         if is_MFT_installed:
             if device  not in mst_status_output:
@@ -1800,7 +1817,7 @@ def _handle_tools_cmd(command, card, timeout = '80'):
     running_command = running_command_dict[command]["cmd"]
     # Check if running_command is None (e.g., mlxdump when MFT is not installed)
     if running_command is None:
-        return(FAILED_STATUS, running_command_dict[command]["error"], tool_error)
+        return(FAILED_STATUS, running_command_dict[command]["error"], running_package)
     st, command_output = get_status_output(running_command, timeout)
     if st == SUCCESS_STATUS: # Success
         return(SUCCESS_STATUS, command_output, running_package)
@@ -1814,8 +1831,9 @@ def _handle_tools_cmd(command, card, timeout = '80'):
             command_error = fwflint_dc_error
             ret_status = SUCCESS_STATUS
         else:
+            command_error = tool_error
             ret_status = FAILED_STATUS
-        return(ret_status, command_error, tool_error)
+        return(ret_status, command_error, running_package)
 
 def general_fw_command_output(command, card, timeout = '80'):
     command_error = "Could not run firmware command: " + command
@@ -1970,6 +1988,8 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
                     return("Error in creating new file in the system", "Error in creating new file in the system", 1)
     elif (command == 'mlxdump'):
         st, res, tool_used = general_fw_command_output(command, card, timeout)
+        if st == FAILED_STATUS and tool_used == 'mst':
+            return(command, res, FAILED_STATUS)
         try:
             f = open(path + file_name + "/firmware/mlxdump_" + filtered_file_name +"_pcie_uc", "w+")
             f.write(" mlxdump -d " + card + " pcie_uc" + "\n")
@@ -2051,6 +2071,13 @@ def process_card_worker(args):
     generate_mst_config(device, local_output)
     return local_output
 
+def is_valid_mft_tools_device(device_desc):
+    if "mlx5Gen PCIe Bridge" not in device_desc \
+    and "DMA controller" not in device_desc \
+    and "SoC PCIe Bridge" not in device_desc:
+        return True
+    return False
+
 def mst_func_handler():
     all_devices = []
     mstregdump_out = []
@@ -2059,6 +2086,9 @@ def mst_func_handler():
         mstregdump_out.append("There are no Mellanox cards.\n")
         return 2, mstregdump_out
     for pci_device in pci_devices:
+        is_valid_mft_tools_dev = is_valid_mft_tools_device(pci_device["name"])
+        if not is_valid_mft_tools_dev:
+            continue
         all_devices.append(pci_device["device"])
     if mtusb_flag:
         if len(mtusb_devices) < 1:
@@ -2080,7 +2110,6 @@ def mst_func_handler():
         args = (card, temp, mst_status_output, is_MFT_installed, is_MST_installed, vf_pf_devices)
         result = process_card_worker(args)
         mstregdump_out.extend(result)
-
     for card in all_devices:
         generate_card_logs(card, mstregdump_out, mst_status_output)
 
@@ -2523,18 +2552,26 @@ def mlxreg_handler_ppcc():
     result = []
     cmd_type_values = ['0','3','4','5','0xa']
     algo_slot_range = 16
+    if is_MFT_installed:
+        mlxreg_bas_cmd = "mlxreg"
+    elif is_MST_installed:
+        mlxreg_bas_cmd = "mstreg"
     if(not os.path.exists(path + file_name + "/mlxreg_pcc/")):
         no_log_status_output("mkdir " + path + file_name + "/mlxreg_pcc" )
     for pci_device in pci_devices:
+        is_valid_mft_tools_dev = is_valid_mft_tools_device(pci_device["name"])
+        if not is_valid_mft_tools_dev:
+            # Not valid for mft tools commands
+            continue
         device = pci_device["device"]
         filter_file_name = device.replace(".","_").replace(":","_")
         for cmd_type in cmd_type_values:
             for algoSlot in range(algo_slot_range):
-                mlxreg_ppc_cmd = "mlxreg -d " + device +" -y --get --op 'cmd_type=" + cmd_type +"' --reg_name PPCC --indexes 'local_port=1,pnat=0,lp_msb=0,algo_slot="+ str(algoSlot)+",algo_param_index=0'"
+                mlxreg_ppc_cmd = "%s -d " % mlxreg_bas_cmd + device +" -y --get --op 'cmd_type=" + cmd_type +"' --reg_name PPCC --indexes 'local_port=1,pnat=0,lp_msb=0,algo_slot="+ str(algoSlot)+",algo_param_index=0'"
                 st,res = get_status_output(mlxreg_ppc_cmd)
                 try:
                     with open(path + file_name + "/mlxreg_pcc/" + filter_file_name, "a+") as outF:
-                        outF.write("mlxreg -d " + device +" -y --get --op 'cmd_type=" + cmd_type +"' --reg_name PPCC --indexes 'local_port=1,pnat=0,lp_msb=0,algo_slot="+str(algoSlot) +",algo_param_index=0' \n\n")
+                        outF.write("%s -d " % mlxreg_bas_cmd + device +" -y --get --op 'cmd_type=" + cmd_type +"' --reg_name PPCC --indexes 'local_port=1,pnat=0,lp_msb=0,algo_slot="+str(algoSlot) +",algo_param_index=0' \n\n")
                         if cmd_type == '4':  # If cmd_type is '4', write only the first 11 lines
                             lines = res.splitlines()[:15]  # Split into lines and take the first 11
                             outF.write("\n".join(lines) + "\n")
@@ -4004,6 +4041,7 @@ def arrange_server_commands_section():
         if is_run_from_bluefield_host:
             commands_collection.append('bfver')
 
+    
     for cmd in commands_collection:
         related_flag = ""
         if cmd in pcie_collection:
@@ -4735,6 +4773,7 @@ def performance_lspci(check_latest=False):
     global pci_devices
     global direct
     global running_warnings
+    global mft_tools_pci_devices
 
     key = "PCI Configurations"
     #lspci -d 15b3: - e.g 81:00.0 Ethernet controller: Mellanox Technologies MT27800 Family [ConnectX-5]
@@ -4756,10 +4795,20 @@ def performance_lspci(check_latest=False):
         direct = True
         return
     mlnx_cards = mlnx_cards.splitlines()
+    for card in mlnx_cards:
+        is_valid_mft_tools_dev = is_valid_mft_tools_device(card)
+        if not is_valid_mft_tools_dev:
+            # Not valid for mft tools commands
+            continue
+        mft_tools_pci_devices.append(card)
     i = -1
     is_all_failed = True
     for card in mlnx_cards:
         i += 1
+        if card not in mft_tools_pci_devices:
+            mft_tools_cmd_run = False
+        else:
+            mft_tools_cmd_run = True
         card_pci = card.split()[0]
         pci_devices.append({"status":"OK", "name":card, "device":card_pci, "current_fw":"", "psid":"", "desired_gen":3.0, "current_gen":3.0, "desired_speed":8.0, "current_speed":8.0, "desired_width":8.0, "current_width":8.0, "desired_payload_size":256.0, "current_payload_size":8.0, "desired_max_read_request":4096.0, "current_max_read_request":4096.0})
         if ( (not "[" in card) or (not "]" in card) ):
@@ -4779,6 +4828,10 @@ def performance_lspci(check_latest=False):
         else:
             pci_devices[i]["desired_payload_size"] = 256.0
             pci_devices[i]["desired_max_read_request"] = 512.0
+        if not mft_tools_cmd_run: 
+            # skip if card is in mft_tools_pci_devices
+            # flint query will not work for these cards
+            continue
         st, firmwares_query, tool_used = general_fw_command_output('fwflint_q', card_pci)
         if (st == 0):
             #firmwares_query :-
@@ -4848,6 +4901,7 @@ def performance_lspci(check_latest=False):
         return
     i = -1
     cards_speed_width = cards_speed_width.splitlines()
+    
     for line in cards_speed_width:
         line = line.lower()
         if ("lnksta:" in line):
@@ -5904,6 +5958,7 @@ def load_modules():
     global mst_devices_exist
     global MFT_INSTALLED_MESSAGE
     is_MFT_installed, MFT_INSTALLED_MESSAGE = is_mft_installed()
+    is_MST_installed, _ = is_mstflint_installed()
     get_status_output("mst start > /dev/null 2>&1", timeout="30")
     if with_inband_flag:
         get_status_output("mst cable add --with_ib > /dev/null 2>&1", timeout="30")
@@ -5921,8 +5976,6 @@ def load_modules():
             if ((device.startswith('SW') or device.startswith('CA')) and ('cable') in device):
                 are_inband_cables_loaded = True
                 break
-
-    is_MST_installed, _ = is_mstflint_installed()
     return
 
 def generate_pcie_debug_info():
