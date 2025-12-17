@@ -119,7 +119,7 @@ class LooseVersion:
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.7.9.5"
+version = "3.7.9.6"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -311,6 +311,9 @@ commands_collection.extend(mft_commands_collection)
 available_commands_collection = [[],[]]
 available_PCIE_debugging_collection_dict = {}
 
+# old/new kernel tracer file path 
+OLD_KERNEL_TRACER_FILE = "/sys/kernel/debug/tracing/trace"
+NEW_KERNEL_TRACER_FILE = "/sys/kernel/tracing/trace"
 # Command groups for organized display
 available_mft_commands = []
 available_network_commands = []
@@ -3795,7 +3798,14 @@ def add_external_file_if_exists(field_name, curr_path):
                 err_flag = 1
                 err_command += "cat " + curr_path
     elif (field_name == "trace"):
-        if is_command_allowed("file :" + curr_path):
+        # Support both old kernel (/sys/kernel/debug/tracing/trace) and new kernel (/sys/kernel/tracing/trace) paths
+        if (os.path.exists(OLD_KERNEL_TRACER_FILE)):
+            curr_path = OLD_KERNEL_TRACER_FILE
+        elif (os.path.exists(NEW_KERNEL_TRACER_FILE)):
+            curr_path = NEW_KERNEL_TRACER_FILE
+        else:
+            curr_path = ""
+        if curr_path and is_command_allowed("file :" + curr_path):
             file_size_bytes = os.path.getsize(curr_path)
             file_size_kilobytes = file_size_bytes / 1024
             # if trace file less then 150KB or trace file flag enabled  
@@ -6605,7 +6615,7 @@ def get_parsed_args():
         ("--with_inband", {"help": "add in-band cable info to the output.", "action": "store_true"}),
         ("--no_ib", {"help": "do not add server IB commands to the output.", "action": "store_true"}),
         ("--keep_info", {"help": "do not delete logs that were gathered, even if sysinfo run is canceled in the middle.", "action": "store_true"}),
-        ("--trace", {"help": "gather /sys/kernel/debug/tracing/trace file even if the size is huge(more than 150 KB), if the file not huge it will be gathered by default", "action": "store_true"}),
+        ("--trace", {"help": "gather kernel trace file (/sys/kernel/debug/tracing/trace for old kernels or /sys/kernel/tracing/trace for new kernels) even if the size is huge(more than 150 KB), if the file not huge it will be gathered by default", "action": "store_true"}),
         ("--interfaces", {"help": "set List of interfaces either ETH netdev based or RDMA - mlx5 based that you want to run sysinfo on (comma separated list)"}),
         ("--openstack", {"help": "gather openstack relevant conf and log files", "action": "store_true"}),
         ("--asap", {"help": "gather asap relevant commands output", "action": "store_true"}),
