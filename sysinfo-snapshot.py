@@ -7,6 +7,7 @@
 #            Ahmad Awwad        ahmadaw@nvidia.com -- Modified: 2025
 __author__ = 'nizars'
 
+from math import e
 import warnings
 import subprocess
 import sys
@@ -119,7 +120,7 @@ class LooseVersion:
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.7.9.6"
+version = "3.7.9.7"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -162,6 +163,7 @@ blueos_flag = False
 missing_critical_info = False # True --> Sysinfo-snapshot is missing some critical debugging information
 non_root = False
 nvsm_dump_flag = False
+device_filter = ""
 CANCELED_STATUS = 4
 ######################################################################################################
 #                Initialize Environment Variables
@@ -251,6 +253,7 @@ no_ib_flag = False
 keep_info_flag = False
 trace_flag = False
 interfaces_flag = False
+device_filter = ""  # Device DBDF to filter by (e.g., "0000:3b:00.0")
 #--with_inband_flag = False, means not to add in-band cable information
 #--with_inband = True, means to add in-band cable information
 #--with_inband can be converted to True by running the tool with --with_inband flag
@@ -1490,7 +1493,17 @@ def mlxcables_options_handler():
     mlxcables = []
     mlxcables_out = []
     res = ''
-
+    mst_device_filter = None
+    if device_filter:
+        st, mst_status_output = get_status_output("mst status -v | grep '%s'" % device_filter)
+        if st == 0:
+            # Extract MST device name from output: /dev/mst/mt4123_pciconf0 -> mt4123_pciconf0
+            # Format: "ConnectX6(rev:0)    /dev/mst/mt4123_pciconf0    3b:00.0"
+            mstdevice_match = re.search(r'/dev/mst/(\S+)', mst_status_output)
+            if mstdevice_match:
+                mst_device_filter = mstdevice_match.group(1)
+            else:
+                mst_device_filter = None
     if mst_devices_exist:
         current_mst_devices = os.listdir("/dev/mst")
         if interfaces_flag:
@@ -1498,6 +1511,9 @@ def mlxcables_options_handler():
         if with_inband_flag: # with in-band cables
             for device in current_mst_devices:
                 if 'cable' in device:
+                    if mst_device_filter and mst_device_filter not in device:
+                        # Skip adding this device to the list if filtering by specific device
+                        continue
                     mlxcables.append(device)
         else: # without in-band cables
             mlxcables = local_mst_devices
@@ -1722,7 +1738,7 @@ def mstcommand_d_handler(command,pcie_debug = False):
         suffix_list = [" --port_type PCIE -c -e"]
 
     command_result = ""
-    mst_status_rs, mst_status_output = get_status_output("mst status -v")
+    mst_status_rs, mst_status_output = get_status_output("mst status | grep '%s'" % device_filter)
     # PCIe ports
     for pci_device in pci_devices:
         is_valid_mft_tools_dev = is_valid_mft_tools_device(pci_device["name"])
@@ -2108,7 +2124,7 @@ def mst_func_handler():
             mstregdump_out.append("There are no MTUSB devices.\n")
         else:
             all_devices += mtusb_devices
-    mst_status_rs, mst_status_output = get_status_output("mst status -v")
+    mst_status_rs, mst_status_output = get_status_output("mst status  | grep '%s'" % device_filter)
     temp = '_run_'
 
     cards_port_dict = {}
@@ -2176,7 +2192,7 @@ def doca_pcc_counter_handler():
     and returns HTML text for output with clickable links for each device.
     """
     devices = []
-    st, mst_output = get_status_output("mst status -v")
+    st, mst_output = get_status_output("mst status -v | grep '%s'" % device_filter)
     if st != 0:
         return 1,"<p>Error: Failed to get devices. {}</p>".format(mst_output)
 
@@ -2541,10 +2557,13 @@ def pci_bus_handler():
 def mlxreg_handler():
     res = ""
     if mst_devices_exist:
+        _, mst_status_output = get_status_output("mst status | grep '%s'" % device_filter)
         mst_devices = os.listdir("/dev/mst")
         if interfaces_flag:
             mst_devices = specific_mst_devices
         for device in mst_devices:
+            if device not in mst_status_output:
+                continue
             if not "cable" in device:
                 res +=  "mlxreg -d /dev/mst/" + device +" --reg_name ROCE_ACCL --get \n\n"
                 st,result = get_status_output("mlxreg -d /dev/mst/" + device +" --reg_name ROCE_ACCL --get")
@@ -4791,15 +4810,28 @@ def add_command_to_pcie_debug_dict(command):
 pci_devices = []
 direct = False
 
+def _validate_device():
+    """
+    Validate the device filter is valid
+    """
+    if device_filter:
+        st, _ = get_status_output("lspci -D -d 15b3: | grep '%s'" % device_filter)
+        if st != 0:
+            raise RuntimeError("Given device is not valid: %s" % device_filter)
+        print("Running tools commands for the given device: %s" % device_filter)
+    
 def performance_lspci(check_latest=False):
     global pci_devices
     global direct
     global running_warnings
     global mft_tools_pci_devices
+    global device_filter
 
+    if device_filter:
+        _validate_device()
     key = "PCI Configurations"
-    #lspci -d 15b3: - e.g 81:00.0 Ethernet controller: Mellanox Technologies MT27800 Family [ConnectX-5]
-    st, cards_num = get_status_output("lspci -d 15b3: | wc -l")
+    #lspci -D -d 15b3: - e.g 81:00.0 Ethernet controller: Mellanox Technologies MT27800 Family [ConnectX-5]
+    st, cards_num = get_status_output("lspci -D -d 15b3: | wc -l")
     if (st != 0 or ("command not found" in cards_num) or represents_int(cards_num) == False):
         perf_status_dict[key]    = "OK"
         perf_val_dict[key]    = " lspci: command not found"
@@ -4811,9 +4843,9 @@ def performance_lspci(check_latest=False):
         direct = True
         return
 
-    st, mlnx_cards = get_status_output("lspci -d 15b3:")
+    st, mlnx_cards = get_status_output("lspci -D -d 15b3: | grep '%s'" % device_filter)
     if (st != 0 or ("command not found" in mlnx_cards)):
-        perf_val_dict[key] = "command not found: lspci -d 15b3:"
+        perf_val_dict[key] = "command not found: lspci -D -d 15b3:"
         direct = True
         return
     mlnx_cards = mlnx_cards.splitlines()
@@ -4879,9 +4911,9 @@ def performance_lspci(check_latest=False):
                    running_warnings.append("--check_fw flag was provided but mlxfwmanager --online-query-psid command not allowed")
     if is_all_failed:
         running_warnings.append("--check_fw flag was provided but running flint q for all cards failed")
-    st, cards_xxx = get_status_output("lspci -d 15b3: -xxx | grep '^70: '")
+    st, cards_xxx = get_status_output("lspci -D -d 15b3: -xxx | grep '%s' | grep '^70: '" % device_filter)
     if (st != 0):
-        perf_val_dict[key] = "command not found: lspci -d 15b3: -xxx | grep '^70: '"
+        perf_val_dict[key] = "command not found: lspci -D -d 15b3: -xxx | grep '^70: '"
         direct = True
         return
     i = -1
@@ -4901,9 +4933,9 @@ def performance_lspci(check_latest=False):
                     pci_devices[i]["current_gen"] = -1.0
             else:
                 pci_devices[i]["current_gen"] = -1.0
-    st, cards_gen = get_status_output("lspci -d 15b3: -vvv | grep -i PCIeGen")
+    st, cards_gen = get_status_output("lspci -D -d 15b3: -vvv | grep '%s' | grep -i PCIeGen" % device_filter)
     if (st != 0):
-        perf_val_dict[key] = "command not found: lspci -d 15b3: -vvv | grep -i PCIeGen"
+        perf_val_dict[key] = "command not found: lspci -D -d 15b3: -vvv | grep -i PCIeGen"
         direct = True
         return
     i = -1
@@ -4915,10 +4947,10 @@ def performance_lspci(check_latest=False):
             pci_devices[i]["desired_gen"] = float((line.split("pciegen")[1]).strip().split()[0])
         except ValueError:
             pci_devices[i]["desired_gen"] = -1.0
-    st, cards_speed_width = get_status_output("lspci -d 15b3: -vvv | grep -i Speed")
-    st, cards_speed_width = get_status_output("lspci -d 15b3: -vvv | grep -i Speed")
+    st, cards_speed_width = get_status_output("lspci -D -d 15b3: -vvv | grep '%s' | grep -i Speed" % device_filter)
+    st, cards_speed_width = get_status_output("lspci -D -d 15b3: -vvv | grep '%s' | grep -i Speed" % device_filter)
     if (st != 0):
-        perf_val_dict[key] = "command not found: lspci -d 15b3: -vvv | grep -i Speed"
+        perf_val_dict[key] = "command not found: lspci -D -d 15b3: -vvv | grep -i Speed"
         direct = True
         return
     i = -1
@@ -4952,9 +4984,9 @@ def performance_lspci(check_latest=False):
             else:
                 pci_devices[i]["desired_width"] = -1.0
 
-    st, cards_payload_read = get_status_output("lspci -d 15b3: -vvv | grep -i MaxReadReq")
+    st, cards_payload_read = get_status_output("lspci -D -d 15b3: -vvv | grep '%s' | grep -i MaxReadReq" % device_filter)
     if (st != 0):
-        perf_val_dict[key] = "command not found: lspci -d 15b3: -vvv | grep -i MaxReadReq"
+        perf_val_dict[key] = "command not found: lspci -D -d 15b3: -vvv | grep '%s' | grep -i MaxReadReq" % device_filter
         direct = True
         return
     i = -1
@@ -5942,7 +5974,7 @@ def build_and_finalize_html3():
 def confirm_mlnx_cards():
     global mlnx_cards_status
     global sriov_exists
-    st, mlnx_cards = no_log_status_output("lspci -d 15b3:")
+    st, mlnx_cards = no_log_status_output("lspci -D -d 15b3: | grep '%s'" % device_filter)
     if (st != 0 or ("command not found" in mlnx_cards)):
         st = st_infiniband_devices
         mlnx_cards = infiniband_devices
@@ -6010,6 +6042,7 @@ def generate_pcie_debug_info():
     create_empty_log_files()
     load_modules()
     update_net_devices()
+    raise Exception("test generate_pcie_debug_info")
     for command in PCIE_debugging_collection:
         if "performance_lspci" in command:
             performance_lspci()
@@ -6252,7 +6285,7 @@ def parse_interfaces_handler(interfaces):
     pcidev2mstdev_mapping = {}
     mst2cabledev_mapping = {}
     # map mst devices to RDMA , and cable devices to mst
-    cmd = "mst status -v"
+    cmd = "mst status -v | grep '%s'" % device_filter
     st, ibdev2mstdev_result = get_status_output(cmd)
     if st == 0:
         ibdev2mstdev_result = re.split("-----+",ibdev2mstdev_result)
@@ -6295,7 +6328,7 @@ def parse_interfaces_handler(interfaces):
     if net_st == 0:
         all_net_dev = all_net_dev.splitlines()
         all_net_dev = [s.strip() for s in all_net_dev]
-    pci_st , lspci_out = get_status_output("lspci -d 15b3:")
+    pci_st , lspci_out = get_status_output("lspci -D -d 15b3: | grep '%s'" % device_filter)
     all_pci_dev = []
     if pci_st == 0:
         lspci_out = lspci_out.splitlines()
@@ -6373,6 +6406,8 @@ def update_flags(args):
     global keep_info_flag
     global trace_flag
     global interfaces_flag
+    global device_filter
+    global parser
     global with_inband_flag
     global pcie_debug_flag
     global fsdump_flag
@@ -6474,6 +6509,20 @@ def update_flags(args):
     if (args.interfaces):
         interfaces_flag = True
         parse_interfaces_handler(args.interfaces)
+    # Check if --device flag was provided in command line
+    if '--device' in sys.argv:
+        # If --device is provided but has no value (None or empty), raise exception
+        if not args.device or args.device == "":
+            print('Error: --device requires a value in DBDF format (e.g., 0000:3b:00.0)')
+            parser.print_help()
+            sys.exit(1)
+        # Validate DBDF format: Domain:Bus:Device.Function (e.g., 0000:3b:00.0)
+        dbdf_pattern = r'^[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-9a-fA-F]$'
+        if not re.match(dbdf_pattern, args.device):
+            print('Error: Invalid device format. Expected format: Domain:Bus:Device.Function (e.g., 0000:3b:00.0)')
+            parser.print_help()
+            sys.exit(1)
+        device_filter = args.device
     if (args.ufm):
         ufm_flag = True
     if (args.with_inband):
@@ -6617,6 +6666,7 @@ def get_parsed_args():
         ("--keep_info", {"help": "do not delete logs that were gathered, even if sysinfo run is canceled in the middle.", "action": "store_true"}),
         ("--trace", {"help": "gather kernel trace file (/sys/kernel/debug/tracing/trace for old kernels or /sys/kernel/tracing/trace for new kernels) even if the size is huge(more than 150 KB), if the file not huge it will be gathered by default", "action": "store_true"}),
         ("--interfaces", {"help": "set List of interfaces either ETH netdev based or RDMA - mlx5 based that you want to run sysinfo on (comma separated list)"}),
+        ("--device", {"help": "run sysinfo for a specific device in DBDF format (e.g., 0000:3b:00.0)"}),
         ("--openstack", {"help": "gather openstack relevant conf and log files", "action": "store_true"}),
         ("--asap", {"help": "gather asap relevant commands output", "action": "store_true"}),
         ("--asap_tc", {"help": "gather asap tc filter commands output", "action": "store_true"}),
@@ -6656,6 +6706,8 @@ def get_parsed_args():
                     adapted_config.update({"dest": "generate_config", "action": "callback", "callback": config_callback})
                 elif flag == "--interfaces":
                     adapted_config.update({"dest": "interfaces"})
+                elif flag == "--device":
+                    adapted_config.update({"dest": "device"})
                 elif flag == "-d":
                     adapted_config.update({"dest": "dir", "action": "callback", "callback": dir_callback})
                 parser.add_option(flag, **adapted_config)
@@ -6669,6 +6721,8 @@ def get_parsed_args():
                     adapted_config.update({"dest": "generate_config", "action": "callback", "callback": config_callback})
                 elif long_flag == "--interfaces":
                     adapted_config.update({"dest": "interfaces"})
+                elif long_flag == "--device":
+                    adapted_config.update({"dest": "device"})
                 elif short_flag == "-d":
                     adapted_config.update({"dest": "dir", "action": "callback", "callback": dir_callback})
                 parser.add_option(short_flag, long_flag, **adapted_config)
@@ -6693,6 +6747,8 @@ def get_parsed_args():
                     adapted_config.update({"nargs": "?", "const": DEFAULT_CONFIG_PATH})
                 elif flag == "--interfaces":
                     adapted_config.update({"nargs": "?"})
+                elif flag == "--device":
+                    adapted_config.update({"nargs": "?"})
                 elif flag == "-d":
                     adapted_config.update({"nargs": "?", "const": "/tmp/"})
                 parser.add_argument(flag, **adapted_config)
@@ -6705,6 +6761,8 @@ def get_parsed_args():
                 elif long_flag == "--generate_config":
                     adapted_config.update({"nargs": "?", "const": DEFAULT_CONFIG_PATH})
                 elif long_flag == "--interfaces":
+                    adapted_config.update({"nargs": "?"})
+                elif long_flag == "--device":
                     adapted_config.update({"nargs": "?"})
                 elif short_flag == "-d":
                     adapted_config.update({"nargs": "?", "const": "/tmp/"})
