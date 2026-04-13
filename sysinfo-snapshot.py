@@ -120,7 +120,7 @@ class LooseVersion:
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.7.9.8"
+version = "3.7.9.9"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -264,6 +264,8 @@ with_inband_flag = False
 # If check_fw flag is true it runs online check for the latest fw for this psid
 fsdump_flag = False
 no_fw_regdumps_flag = False
+dump_tool = "resourcedump"
+resourcedump_print_flag = False
 no_mstconfig_flag = False
 no_cables_flag = False
 all_var_log_flag = False
@@ -529,7 +531,8 @@ signal.signal(signal.SIGINT, signal_handler)
 #rpm --eval %{_vendor}
 #Ubuntu prints debian
 #Redhat and CentOS prints redhat
-
+cmd = "rpm --eval %{_vendor}"
+print(f"cmd: {cmd}")
 os_st, cur_os = no_log_status_output("rpm --eval %{_vendor}")
 def decide():
     global cur_os
@@ -546,6 +549,7 @@ def decide():
         sys.exit(0)
 
 if (os_st == 0 and cur_os != "%{_vendor}"):
+    print(f"cur_os: {cur_os}")
     if (cur_os not in supported_os_collection):
         print("Operating system with vendor " + cur_os + " is not tested in this Linux sysinfo snapshot.")
         decide()
@@ -568,7 +572,8 @@ else:
             blueos_flag = True
     elif ("suse" in o_systems):
         cur_os = "suse"
-    elif ( ("ubuntu" in o_systems) or ("debian" in o_systems) or ("uos" in o_systems)):
+    elif (("ubuntu" in o_systems) or ("debian" in o_systems) or ("uos" in o_systems)
+          or ("arch" in o_systems) or any("id_like=debian" in part for part in o_systems)):
         cur_os = "debian"
     else:
         print("Unable to distinguish operating system.")
@@ -1777,6 +1782,42 @@ def save_mlxlink_output_to_file(filtered_file_name,result):
     except:
         print("Error in creating new file in the system : " + file_path)
 
+def _pci_bdf_short_form(pci):
+    """Normalize PCI BDF to bb:dd.f for comparison (accepts 0000:04:00.0 or 04:00.0)."""
+    pci = pci.strip()
+    m = re.fullmatch(r"([0-9a-fA-F]{4}):([0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7])", pci)
+    if m:
+        return m.group(2).lower()
+    m = re.fullmatch(r"([0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7])", pci)
+    if m:
+        return m.group(1).lower()
+    return None
+
+def _line_contains_card(line, card):
+    """True if line includes card string or, for PCI BDF, the domain-stripped BDF."""
+    if card in line:
+        return True
+    short = _pci_bdf_short_form(card)
+    return bool(short and short in line)
+
+def _get_fw_ctl_device(card, mft_installed):
+    """First line in mst status -v / mstdevices_info -v that contains card and a /dev/fwctl path."""
+    if not card:
+        return None
+    card = card.strip()
+    cmd = "mst status -v" if mft_installed else "mstdevices_info -v"
+    st, res = get_status_output(cmd)
+    if st != 0:
+        return None
+    for line in res.splitlines():
+        ls = line.strip()
+        if not _line_contains_card(ls, card):
+            continue
+        m = re.search(r"(/dev/fwctl/\S+)", ls)
+        if m:
+            return m.group(1).rstrip(".,;:")
+    return None
+
 def _handle_tools_cmd(command, card, timeout = '80'):
     """
     Handle tools commands wrapper
@@ -1786,6 +1827,8 @@ def _handle_tools_cmd(command, card, timeout = '80'):
     output: Output of the command
     running_package: 'mft' or 'mst'
     """
+    global resourcedump_print_flag
+    global dump_tool
     commands_dict = {}
     # Initialize lists as dictonary values
     # First index of each list will be the MFT command
@@ -1793,29 +1836,42 @@ def _handle_tools_cmd(command, card, timeout = '80'):
     # Invoke MFT command if installed, otherwise invoke MSTFLINT command
     # Return 0 --> Command succeeded, 1 --> Failed
     commands_dict['fwdump'] = ["mstdump " + card, "mstregdump " + card]
+    commands_dict['fwdump_resourcedump'] = ["resourcedump dump -d %s -s CRSPACE -p map" % card, 
+                                            "mstresourcedump dump -d %s -s CRSPACE -p map" % card]
     commands_dict['fwconfig'] = ["mlxconfig -d " + card + " -e  q", "mstconfig -d " + card + " -e  q"]
     commands_dict['fwflint'] = ["flint -d " + card, "mstflint -d " + card]
     commands_dict['mlxdump'] = ["mlxdump -d " + card + " pcie_uc --all"]
     fwflint_error = "Couldn't run mstflint / flint. Please make sure MST or MFT are installed."
     fwdump_error = "Couldn't run mstregdump / mstdump. Please make sure MST or MFT are installed."
+    fwdump_resourcedump_error = "Couldn't run resourcedump / mstresourcedump for CRSPACE map."
     fwconfig_error = "Couldn't run mstconfig / mlxconfig. Please make sure MST or MFT are installed."
     mlxdump_error = "Couldn't run mlxdump. Please make sure MFT is installed."
     mlxdump_notsupported_error = "Device not supported, couldn't run mlxdump " + card + " pcie_uc --all"
     fwflint_dc_error = "Unsupported device, couldn't run mstflint/flint -d " + card + " dc"
     command_error = "Could not run firmware command: " + command
     tool_error = "N/A"
+    if command == "fwdump" and dump_tool == "resourcedump":
+        fw_ctl_device = _get_fw_ctl_device(card, is_MFT_installed)
+    else:
+        fw_ctl_device = None
     if is_MFT_installed:
         fw_query_base_cmd = commands_dict["fwflint"][0] # flint
         fw_dump_cmd = commands_dict["fwdump"][0] # mstdump
         fw_config_cmd = commands_dict["fwconfig"][0] # mlxconfig
         mlxdump_pcie_cmd = commands_dict["mlxdump"][0] # mlxdump
+        fw_dump_resourcedump_cmd = commands_dict["fwdump_resourcedump"][0] # resourcedump
         running_package = 'mft'
     else:
         fw_query_base_cmd = commands_dict["fwflint"][1] # mstflint
         fw_dump_cmd = commands_dict["fwdump"][1] # mstregdump
         fw_config_cmd = commands_dict["fwconfig"][1] # mstconfig
         mlxdump_pcie_cmd = None
+        fw_dump_resourcedump_cmd = commands_dict["fwdump_resourcedump"][1] # mstresourcedump
         running_package = 'mst'
+    if fw_ctl_device:
+        fw_dump_resourcedump_cmd = fw_dump_resourcedump_cmd.replace(card, fw_ctl_device)
+    elif command == "fwdump" and dump_tool == "resourcedump":
+        dump_tool = "mstdump"
     # Create a dictionary of running commands and their errors
     if command == 'fwflint_q' or command == 'fwflint_dc':
         if command == 'fwflint_q':
@@ -1836,17 +1892,32 @@ def _handle_tools_cmd(command, card, timeout = '80'):
 
     running_command_dict = {"fwflint_q": {"cmd": fw_query_full_cmd, "error": fwflint_error},
                             "fwflint_dc": {"cmd": fw_query_full_cmd, "error": fwflint_error},
-                            "fwdump": {"cmd": fw_dump_cmd, "error": fwdump_error},
+                            "fwdump": {"cmd": fw_dump_cmd, "resourcedump_cmd": fw_dump_resourcedump_cmd, "error": fwdump_error},
                             "fwconfig": {"cmd": fw_config_cmd, "error": fwconfig_error},
                             "mlxdump": {"cmd": mlxdump_pcie_cmd, "error": mlxdump_error}}
     # if both are not installed, return error
     if (not is_MFT_installed and not is_MST_installed): 
         return(FAILED_STATUS, running_command_dict[command]["error"], tool_error)
     running_command = running_command_dict[command]["cmd"]
-    # Check if running_command is None (e.g., mlxdump when MFT is not installed)
-    if running_command is None:
-        return(HIDE_STATUS, running_command_dict[command]["error"], running_package)
-    st, command_output = get_status_output(running_command, timeout)
+    if command == 'fwdump':
+        # Try to run resourcedump command
+        if dump_tool == "resourcedump":
+            running_command = running_command_dict[command]["resourcedump_cmd"]
+        else:
+            running_command = running_command_dict[command]["cmd"]
+        st, command_output = get_status_output(running_command, timeout)
+        if dump_tool == "resourcedump" and st == FAILED_STATUS:
+            if verbose_flag:
+                print("resourcedump command failed. Error: %s \n trying mstdump command" % command_output)
+            running_command = running_command_dict[command]["cmd"]
+            st, command_output = get_status_output(running_command, timeout)
+        else:
+            resourcedump_print_flag = True
+    else:
+        # Check if running_command is None (e.g., mlxdump when MFT is not installed)
+        if running_command is None:
+            return(HIDE_STATUS, running_command_dict[command]["error"], running_package)
+        st, command_output = get_status_output(running_command, timeout)
     if st == SUCCESS_STATUS: # Success
         return(SUCCESS_STATUS, command_output, running_package)
     else: # failed
@@ -1888,26 +1959,28 @@ def general_fw_commands_handler(command, card, filtered_file_name, timeout = '80
         st, res, tool_used = general_fw_command_output(command, card, timeout)
         if tool_used == 'mst':
             try:
-                f = open(path + file_name + "/firmware/mstregdump_" + filtered_file_name, "w+")
+                dump_tool_name = "mstregdump" if not resourcedump_print_flag else "mstresourcedump"
+                f = open(path + file_name + "/firmware/%s_" % dump_tool_name + filtered_file_name, "w+")
                 f.write(res + "\n")
                 f.close()
-                return ("firmware/mstregdump_" + filtered_file_name, "mst", 0)
+                return ("firmware/%s_" % dump_tool_name + filtered_file_name, "mst", 0)
             except:
                 with open(path+file_name+"/err_messages/dummy_functions", 'a') as f:
-                    f.write("The full command is: mstregdump " + card + "\n")
+                    f.write("The full command is: %s " % dump_tool_name + card + "\n")
                     f.write("Error in creating new file in the system")
                     f.write("\n\n")
                     return("Error in creating new file in the system", "Error in creating new file in the system", 1)
         
         elif tool_used =='mft':
             try:
-                f = open(path + file_name + "/firmware/mstdump_" + filtered_file_name, "w+")
+                dump_tool_name = "mstdump" if not resourcedump_print_flag else "resourcedump"
+                f = open(path + file_name + "/firmware/%s_" % dump_tool_name + filtered_file_name, "w+")
                 f.write(res + "\n")
                 f.close()
-                return ("firmware/mstdump_" + filtered_file_name, "mft", 0)
+                return ("firmware/%s_" % dump_tool_name + filtered_file_name, "mft", 0)
             except:
                 with open(path+file_name+"/err_messages/dummy_functions", 'a') as f:
-                    f.write("The full command is: mstdump " + card + "\n")
+                    f.write("The full command is: %s " % dump_tool_name + card + "\n")
                     f.write("Error in creating new file in the system")
                     f.write("\n\n")
                     return("Error in creating new file in the system", "Error in creating new file in the system", 1)
@@ -6445,6 +6518,7 @@ def update_flags(args):
     global file_name
     global non_root
     global nvsm_dump_flag
+    global dump_tool
     isFile = False
     if (args.config):
         config_file_flag = True
@@ -6489,6 +6563,8 @@ def update_flags(args):
         fsdump_flag = True
     if (args.no_fw_regdumps):
         no_fw_regdumps_flag = True
+    if hasattr(args, 'dump_tool') and args.dump_tool:
+        dump_tool = args.dump_tool
     if (args.no_cables):
         no_cables_flag = True
     if (args.no_mstconfig):
@@ -6657,6 +6733,7 @@ def get_parsed_args():
         ("--no_fw", {"help": "do not add firmware commands to the output.", "action": "store_true"}),
         ("--fsdump", {"help": "add fsdump firmware command to the output.", "action": "store_true"}),
         ("--no_fw_regdumps", {"help": "disable regdumps firmware command.", "action": "store_true"}),
+        ("--dump-tool", {"help": "select dump tool for firmware regdumps when MFT is installed (default: resourcedump).", "default": "resourcedump", "choices": ["resourcedump", "mstdump"]}),
         ("--no_mstconfig", {"help": "disable mstconfig firmware command.", "action": "store_true"}),
         ("--all_var_log", {"help": "collect all logs in /var/log/ dir", "action": "store_true"}),
         ("--no_cables", {"help": "disable mlxlink, mget_temp, mlxmcg command that is related to cables.", "action": "store_true"}),
