@@ -994,7 +994,6 @@ def ethtool_all_interfaces_handler():
     mellanox_net_devices = all_net_devices
     if (len(mellanox_net_devices) > 0):
         get_status_output("mkdir " + path + file_name + "/ethtool_S")
-        #invoke_command(['mkdir', path + file_name + "/ethtool_S"])
 
     st, ethtool_version = ethtool_version_handler()
     if st != 0:
@@ -1030,13 +1029,12 @@ def ethtool_S_output(mellanox_net_devices):
         st, ethtool_interface = get_status_output(ethtool_command + " " + " -S " + interface)
         if (st != 0 and st != CANCELED_STATUS ):
             ethtool_interface = "Could not run command: ethtool -S " + interface
-        filtered_interface_name = interface.replace(":", "").replace(".", "")
-        file = open(path + file_name + "/ethtool_S/ethtool_S_" + filtered_interface_name, 'w')
+        filtered_interface_name = interface.replace(":", "").replace(".", "").replace("/", "_").replace(" ", "_")
+        artifact_rel_path = "ethtool_S/ethtool_S_" + filtered_interface_name
+        file = open(path + file_name + "/" + artifact_rel_path, 'w')
         file.write(ethtool_interface)
         file.close()
-        res += "ethtool -S " + interface + "\n"
-        res += "<td><a href=ethtool_S/ethtool_S_" + filtered_interface_name + ">ethtool -S " + interface + "</a></td>"
-        res += "\n\n--------------------------------------------------"
+        res += '<a href="' + artifact_rel_path + '">ethtool -S ' + interface + '</a>'
     return res
 #**********************************************************
 #        modinfo Handler
@@ -5542,21 +5540,21 @@ def html_write_paragraph(html, base, collection, dict, prev_parag_end):
         # Add command title/header
         html.write("<h2>"+collection[i]+"</h2>")
         # Add command output/content
-        if ( (original_collection == available_commands_collection)
+        if (collection[i] == "ethtool_all_interfaces") or (collection[i] == "devlink_handler"):
+            content = dict[collection[i]]
+            content = content.split("\n")
+            content_final = ""
+            for line in content:
+                if '<a href' not in line.lower():
+                    content_final += line.replace('<', "&lt;").replace('>', "&gt;") + "\n"
+                else:
+                    content_final += line + "\n"
+            html.write("<p>" + content_final + "</p>")
+        elif ( (original_collection == available_commands_collection)
             and ( collection[i] in available_commands_collection[not is_command_string])):
             array_output_links_collection = ["fw_ini_dump","mst_commands_query_output","asap_parameters","asap_tc_information","rdma_tool","ecn_configuration","doca_pcc_counter","/etc/mlnx_snap","congestion_control_parameters","show_irq_affinity_all","mlxcables","networkManager_system_connections"]
             html.write("<p>")
-            if (collection[i] == "ethtool_all_interfaces") or (collection[i] == "devlink_handler") :
-                content = dict[collection[i]]
-                content = content.split("\n")
-                content_final = ""
-                for line in content:
-                    if "<td><a href=" not in line:
-                        content_final += line.replace('<', "&lt;").replace('>', "&gt;") + "\n"
-                    else:
-                        content_final += line + "\n"
-                html.write(content_final)
-            elif ( collection[i] in array_output_links_collection ):
+            if ( collection[i] in array_output_links_collection ):
                 if("mst_commands_query_output" in collection[i] and non_root):
                     html.write("Running as a non-root user - You must be root to use mst tool")
                     html.write("&nbsp;&nbsp;&nbsp;&nbsp;")
