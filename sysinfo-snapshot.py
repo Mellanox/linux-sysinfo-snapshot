@@ -4682,27 +4682,82 @@ def show_error_message(err_msg):
 ###########################################################
 ############## Main Function's Handlers ###################
 
-def remove_unwanted_temp_files(file,filePath):
-    if (file.startswith("tmp.") or file.startswith("hsqldb.")):
-        if os.path.isfile(filePath + file):
-            os.remove(filePath + file)
-        elif os.path.isdir(filePath + file):
-            os.rmdir(filePath + file)
+# Files that subprocesses (mst, ibdiagnet, HSQLDB, mlnx_tune, ...) drop into
+# /tmp during a sysinfo-snapshot run. This is a manifest, not a generic
+# temp-file pattern: do not broaden it without auditing what other tenants
+# on a shared /tmp/ may have written.
+SIDE_EFFECT_FILE_PREFIXES = ("tmp.", "hsqldb.")
+
+
+def remove_subprocess_scratch(directory):
+    """Delete files (and empty directories) in *directory* whose basenames
+    start with a prefix in SIDE_EFFECT_FILE_PREFIXES.
+
+    Best-effort:
+      - Absent directory or non-directory path: silent return (nothing
+        to clean).
+      - Listing or removal failures (permission denied, non-empty dir,
+        etc.): logged and skipped.
+      - TOCTOU races where a target vanishes between listdir and remove:
+        silent.
+      - Non-OSError exceptions propagate.
+    """
+    try:
+        for name in os.listdir(directory):
+            if not name.startswith(SIDE_EFFECT_FILE_PREFIXES):
+                continue
+            target = os.path.join(directory, name)
+            try:
+                os.remove(target)
+            except FileNotFoundError:
+                pass
+            except IsADirectoryError:
+                try:
+                    os.rmdir(target)
+                except OSError as e:
+                    print("warning: could not remove " + target + ": " + str(e))
+            except OSError as e:
+                print("warning: could not remove " + target + ": " + str(e))
+    except (FileNotFoundError, NotADirectoryError):
+        # Nothing to clean: the path is absent or isn't a directory.
+        # Distinct from the OSError branch below, which signals a real
+        # I/O failure (permission denied, etc.) worth logging.
+        return
+    except OSError as e:
+        print("warning: could not list " + directory + ": " + str(e))
+
 
 # Remove all unwanted side effect files and folders
 def remove_unwanted_files():
-    # Remove mstflint_lockfiles directory
-    no_log_status_output("rm -rf /tmp/mstflint_lockfiles")
-    # Remove all unwanted side effect files
-    if (path != "/tmp/" and os.path.exists(path) == True):
-        for file in os.listdir(path):
-            remove_unwanted_temp_files(file , path)
-    for tmp_file_name in os.listdir('/tmp/'):
-        if(re.search("^status-log-.*" + file_name + "$", tmp_file_name)):
-            os.remove("/tmp/" + tmp_file_name)
-        remove_unwanted_temp_files( tmp_file_name, "/tmp/" )
-    # Remove untared directory out file
-    shutil.rmtree( path + file_name)
+    """Post-tar cleanup of side-effect files left by this run.
+
+    Removes:
+        - /tmp/mstflint_lockfiles/        (left by mst tooling)
+        - /tmp/status-log-<file_name>     (this run's scratch log)
+        - subprocess scratch in /tmp/ and in -d (when != /tmp/), per
+          SIDE_EFFECT_FILE_PREFIXES
+        - the staging directory <path>/<file_name>/, now tarred
+
+    Preserves <path>/<file_name>.tgz (the deliverable). The prefix-based
+    scratch removal cannot distinguish this run's files from other
+    tenants' files using the same prefixes on a shared /tmp/; we accept
+    that trade-off rather than tracking per-file ownership.
+    """
+    shutil.rmtree("/tmp/mstflint_lockfiles", ignore_errors=True)
+
+    status_log = os.path.join("/tmp", "status-log-" + file_name)
+    try:
+        os.remove(status_log)
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        print("warning: could not remove " + status_log + ": " + str(e))
+
+    remove_subprocess_scratch("/tmp/")
+    if path != "/tmp/":
+        remove_subprocess_scratch(path)
+
+    shutil.rmtree(os.path.join(path, file_name), ignore_errors=True)
 
 
 def validate_not_file():
