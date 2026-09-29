@@ -1813,7 +1813,7 @@ def mstcommand_d_handler(command,pcie_debug = False):
             continue
         device = pci_device["device"]
         if is_MFT_installed:
-            if device  not in mst_status_output:
+            if not _in_mst_status(device, mst_status_output):
                 continue
         elif is_MST_installed:
             if device in vf_pf_devices:
@@ -1860,6 +1860,11 @@ def _line_contains_card(line, card):
         return True
     short = _pci_bdf_short_form(card)
     return bool(short and short in line)
+
+def _in_mst_status(name, mst_status_output):
+    """Match a BDF / mst device without its trailing function: mst status may list a
+    card only once, but every PF (.0, .1, ...) still has to be collected."""
+    return name.rsplit(".", 1)[0] in mst_status_output
 
 def _get_fw_ctl_device(card, mft_installed):
     """First line in mst status -v / mstdevices_info -v that contains card and a /dev/fwctl path."""
@@ -2176,7 +2181,7 @@ def generate_mst_config(device, mstregdump_out):
 
 def generate_card_logs(card, mstregdump_out, mst_status_output):
     if is_MFT_installed:
-        if card not in mst_status_output:
+        if not _in_mst_status(card, mst_status_output):
             return
     elif is_MST_installed:
         if card in vf_pf_devices:
@@ -2226,7 +2231,7 @@ def process_card_worker(args):
         # Remove first segment (before first colon) from device for comparison (e.g., '0000:c1:00.0' -> 'c1:00.0')
         device_parts = device.split(':', 1)
         device_for_check = device_parts[1] if len(device_parts) > 1 else device
-        if device_for_check not in mst_status_output:
+        if not _in_mst_status(device_for_check, mst_status_output):
             return local_output
     elif is_MST_installed:
         if device in vf_pf_devices:
@@ -2698,7 +2703,7 @@ def mlxreg_handler():
         if interfaces_flag:
             mst_devices = specific_mst_devices
         for device in mst_devices:
-            if device not in mst_status_output:
+            if not _in_mst_status(device, mst_status_output):
                 continue
             if not "cable" in device:
                 res +=  "mlxreg -d /dev/mst/" + device +" --reg_name ROCE_ACCL --get \n\n"
