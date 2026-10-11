@@ -120,7 +120,7 @@ class LooseVersion:
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.8.0.1"
+version = "3.8.0.2"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -1229,7 +1229,18 @@ def is_mft_installed():
             mft_message =  "MFT is not installed, please install MFT and try again."
     else:
         print("MFT is installed and its version is: %s" % output)
-        mft_installed = True
+        print("Checking if mft can be started ...")
+        # Check if mft can be started
+        # mst start
+        mst_status, mst_output = get_status_output("mst start")
+        if mst_status != 0:
+            mft_message = "MFT can not be started, please check the mft logs. Switching to mstflint (if installed)."
+            print("MFT can not be started, switching to mstflint (if installed).")
+            mft_installed = False
+        else:
+            mft_message = "MFT can be started successfully."
+            print("MFT can be started successfully.")
+            mft_installed = True
     return mft_installed, mft_message
 
 
@@ -1875,13 +1886,15 @@ def _get_fw_ctl_device(card, mft_installed):
     st, res = get_status_output(cmd)
     if st != 0:
         return None
-    for line in res.splitlines():
-        ls = line.strip()
-        if not _line_contains_card(ls, card):
-            continue
-        m = re.search(r"(/dev/fwctl/\S+)", ls)
-        if m:
-            return m.group(1).rstrip(".,;:")
+    # Exact match on all lines first; short BDF is a fallback (it can match another domain).
+    for matches in (lambda l: card in l, lambda l: _line_contains_card(l, card)):
+        for line in res.splitlines():
+            ls = line.strip()
+            if not matches(ls):
+                continue
+            m = re.search(r"(/dev/fwctl/\S+)", ls)
+            if m:
+                return m.group(1).rstrip(".,;:")
     return None
 
 def _handle_tools_cmd(command, card, timeout = '80'):
