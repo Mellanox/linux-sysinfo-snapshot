@@ -444,6 +444,26 @@ def is_command_exists(command):
         else:
             return False
  
+def read_file_in_process(command, timeout):
+    """ Plain "cat <file>" read without spawning a process. None -> caller runs the real cat. """
+    m = re.match(r"^cat\s+([^\s|;&<>$`*?()'\"\\]+)$", command)
+    if not m:
+        return None
+    data = []
+    def _read():
+        try:
+            with open(m.group(1), 'rb') as f:
+                data.append(f.read())
+        except Exception:
+            pass
+    t = threading.Thread(target=_read)
+    t.daemon = True
+    t.start()
+    t.join(float(timeout))
+    if not data:
+        return None # error or timeout: let cat report it exactly as before
+    return 0, standarize_str(data[0])
+
 @log
 def get_status_output(command, timeout='10'):
     command_with_timeout = "timeout " + timeout + "s " + command
@@ -455,6 +475,11 @@ def get_status_output(command, timeout='10'):
                 return 1, "Cant read file "  + filePath + " due to missing permissions"
             elif not os.path.exists(filePath):
                 return 1, "Cant read file "  + filePath + " due to file does not exists" 
+            fast_result = read_file_in_process(command, timeout)
+            if fast_result is not None:
+                if verbose_flag:
+                    print("\tExecuting command: %s" % command_with_timeout)
+                return fast_result
         else:
             base_command = command.split()[0]
             if base_command in command_exists_dict:
@@ -1182,12 +1207,9 @@ def mlnx_qos_handler():
 #  lldptool
 
 def lldptool_handler(command):
-    st,res = get_status_output("lldpad")
-    if ("command not found" in res):
-        return 1,res
-    else:
-        status,result = get_status_output(command)
-        return status,result
+    # No "lldpad" probe: it is a daemon, so it only hit the 10s timeout (4x per run)
+    status,result = get_status_output(command)
+    return status,result
 
 #**********************************************************
 #        cma_roce_mode/tos Handler
@@ -3959,9 +3981,10 @@ def add_external_file_if_exists(field_name, curr_path):
                 err_command += field_name
     elif (field_name == "kernel config"):
         if is_command_allowed("file :" + curr_path):
-            status, command_output = get_status_output("cat " + curr_path)
+            st , uname = get_status_output("uname -r")
+            # "cat" is not run through a shell here, so $(uname -r) must be expanded in python
+            status, command_output = get_status_output("cat " + curr_path.replace("$(uname -r)", uname.strip()))
             if (status == 0):
-                st , uname = get_status_output("uname -r")
                 if (st == 0):
                     add_ext_file_handler(field_name, "config-" + uname.strip(), command_output)
                 else:
