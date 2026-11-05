@@ -1921,7 +1921,6 @@ def _handle_tools_cmd(command, card, timeout = '80'):
     running_package: 'mft' or 'mst'
     """
     global resourcedump_print_flag
-    global dump_tool
     commands_dict = {}
     # Initialize lists as dictonary values
     # First index of each list will be the MFT command
@@ -1945,7 +1944,8 @@ def _handle_tools_cmd(command, card, timeout = '80'):
     fwflint_dc_error = "Unsupported device, couldn't run mstflint/flint -d " + card + " dc"
     command_error = "Could not run firmware command: " + command
     tool_error = "N/A"
-    if command == "fwdump" and dump_tool == "resourcedump":
+    use_resourcedump = (dump_tool == "resourcedump") # per device, fwctl may exist only on some devices
+    if command == "fwdump" and use_resourcedump:
         fw_ctl_device = _get_fw_ctl_device(card, is_MFT_installed)
     else:
         fw_ctl_device = None
@@ -1967,8 +1967,8 @@ def _handle_tools_cmd(command, card, timeout = '80'):
         running_package = 'mst'
     if fw_ctl_device:
         fw_dump_resourcedump_cmd = fw_dump_resourcedump_cmd.replace(card, fw_ctl_device)
-    elif command == "fwdump" and dump_tool == "resourcedump":
-        dump_tool = "mstdump"
+    elif command == "fwdump" and use_resourcedump:
+        use_resourcedump = False
     # Create a dictionary of running commands and their errors
     if command == 'fwflint_q' or command == 'fwflint_dc':
         if command == 'fwflint_q':
@@ -1992,18 +1992,19 @@ def _handle_tools_cmd(command, card, timeout = '80'):
     running_command = running_command_dict[command]["cmd"]
     if command == 'fwdump':
         # Try to run resourcedump command
-        if dump_tool == "resourcedump":
+        if use_resourcedump:
             running_command = running_command_dict[command]["resourcedump_cmd"]
         else:
             running_command = running_command_dict[command]["cmd"]
         st, command_output = get_status_output(running_command, timeout)
-        if dump_tool == "resourcedump" and st == FAILED_STATUS:
+        if use_resourcedump and st == FAILED_STATUS:
             if verbose_flag:
                 print("resourcedump command failed. Error: %s \n trying mstdump command" % command_output)
             running_command = running_command_dict[command]["cmd"]
             st, command_output = get_status_output(running_command, timeout)
+            resourcedump_print_flag = False
         else:
-            resourcedump_print_flag = True
+            resourcedump_print_flag = use_resourcedump # file name follows the tool that really ran
     else:
         # Check if running_command is None (e.g., mlxdump when MFT is not installed)
         if running_command is None:
