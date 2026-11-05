@@ -126,6 +126,7 @@ len_argv = len(sys.argv)
 driver_required_loading = False
 is_MST_installed = False
 is_MFT_installed = False
+is_MFT_internal = False
 MFT_INSTALLED_MESSAGE = ""
 SHOW_PHY_INFO_NOT_AVAILABLE_MESSAGE = "show_phy_info is not available, make sure you have installed supported MFT/MSTFLINT tool\n"
 # MODULE_SPLIT_M0/M1 are array params, not expanded by -e q
@@ -1247,6 +1248,11 @@ def is_mft_installed():
             mft_installed = True
     return mft_installed, mft_message
 
+def is_mft_internal():
+    """ mlxdump pcie_uc works only on internal MFT. """
+    st, output = get_status_output("mlxdump -v")
+    return st == 0 and "internal" in output
+
 
 #**********************************************************
 #        is_mstflint_installed Handler Helper Function
@@ -1973,13 +1979,7 @@ def _handle_tools_cmd(command, card, timeout = '80'):
     else:
         fw_query_full_cmd = ""
     if command == "mlxdump":
-        mlxdump_pcie_cmd = None
-        mlxdump_version_cmd = "mlxdump -v"
-        rs, res = get_status_output(mlxdump_version_cmd)
-        if rs == 0:
-            if "internal" in res:
-                # This command works only for internal MFT
-                mlxdump_pcie_cmd = commands_dict["mlxdump"][0]
+        mlxdump_pcie_cmd = commands_dict["mlxdump"][0] if is_MFT_internal else None
 
     running_command_dict = {"fwflint_q": {"cmd": fw_query_full_cmd, "error": fwflint_error},
                             "fwflint_dc": {"cmd": fw_query_full_cmd, "error": fwflint_error},
@@ -6175,11 +6175,13 @@ def create_empty_log_files():
 def load_modules():
     global driver_required_loading
     global is_MFT_installed
+    global is_MFT_internal
     global is_MST_installed
     global are_inband_cables_loaded
     global mst_devices_exist
     global MFT_INSTALLED_MESSAGE
     is_MFT_installed, MFT_INSTALLED_MESSAGE = is_mft_installed()
+    is_MFT_internal = is_MFT_installed and is_mft_internal()
     is_MST_installed, _ = is_mstflint_installed()
     get_status_output("mst start > /dev/null 2>&1", timeout="30")
     if with_inband_flag:
