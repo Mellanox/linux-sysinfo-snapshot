@@ -128,7 +128,7 @@ Collect nvsm dump health.\
 5.3.26 --no_fw_regdumps.\
 disable regdumps firmware command.
 5.3.27 -- no_mstconfig.\
-disable mstconfig firmware command.
+disable mstconfig firmware command (also disables the MODULE_SPLIT query).
 5.3.28 --no_cables \
 disable mlxlink, mget_temp, mlxmcg command that is related to cables.
 5.3.29 --all_var_log \

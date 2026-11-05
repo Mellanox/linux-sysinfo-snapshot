@@ -120,7 +120,7 @@ class LooseVersion:
 ######################################################################################################
 #                                     GLOBAL GENERAL VARIABLES
 
-version = "3.8.0.2"
+version = "3.8.0.3"
 sys_argv = sys.argv
 len_argv = len(sys.argv)
 driver_required_loading = False
@@ -128,6 +128,8 @@ is_MST_installed = False
 is_MFT_installed = False
 MFT_INSTALLED_MESSAGE = ""
 SHOW_PHY_INFO_NOT_AVAILABLE_MESSAGE = "show_phy_info is not available, make sure you have installed supported MFT/MSTFLINT tool\n"
+# MODULE_SPLIT_M0/M1 are array params, not expanded by -e q
+MODULE_SPLIT_QUERY_ARGS = "--force -e q 'MODULE_SPLIT_M0[0..15]' 'MODULE_SPLIT_M1[0..15]'"
 are_inband_cables_loaded = False # If in-band cables were loaded before user runs snapshot
 mst_devices_exist = False
 all_sm_on_fabric = []
@@ -1924,6 +1926,8 @@ def _handle_tools_cmd(command, card, timeout = '80'):
     commands_dict['fwdump_resourcedump'] = ["resourcedump dump -d %s -s CRSPACE -p map" % card, 
                                             "mstresourcedump dump -d %s -s CRSPACE -p map" % card]
     commands_dict['fwconfig'] = ["mlxconfig -d " + card + " -e  q", "mstconfig -d " + card + " -e  q"]
+    commands_dict['fwconfig_module_split'] = ["mlxconfig -d " + card + " " + MODULE_SPLIT_QUERY_ARGS,
+                                              "mstconfig -d " + card + " " + MODULE_SPLIT_QUERY_ARGS]
     commands_dict['fwflint'] = ["flint -d " + card, "mstflint -d " + card]
     commands_dict['mlxdump'] = ["mlxdump -d " + card + " pcie_uc --all"]
     fwflint_error = "Couldn't run mstflint / flint. Please make sure MST or MFT are installed."
@@ -1943,6 +1947,7 @@ def _handle_tools_cmd(command, card, timeout = '80'):
         fw_query_base_cmd = commands_dict["fwflint"][0] # flint
         fw_dump_cmd = commands_dict["fwdump"][0] # mstdump
         fw_config_cmd = commands_dict["fwconfig"][0] # mlxconfig
+        fw_module_split_cmd = commands_dict["fwconfig_module_split"][0] # mlxconfig MODULE_SPLIT
         mlxdump_pcie_cmd = commands_dict["mlxdump"][0] # mlxdump
         fw_dump_resourcedump_cmd = commands_dict["fwdump_resourcedump"][0] # resourcedump
         running_package = 'mft'
@@ -1950,6 +1955,7 @@ def _handle_tools_cmd(command, card, timeout = '80'):
         fw_query_base_cmd = commands_dict["fwflint"][1] # mstflint
         fw_dump_cmd = commands_dict["fwdump"][1] # mstregdump
         fw_config_cmd = commands_dict["fwconfig"][1] # mstconfig
+        fw_module_split_cmd = commands_dict["fwconfig_module_split"][1] # mstconfig MODULE_SPLIT
         mlxdump_pcie_cmd = None
         fw_dump_resourcedump_cmd = commands_dict["fwdump_resourcedump"][1] # mstresourcedump
         running_package = 'mst'
@@ -2004,6 +2010,8 @@ def _handle_tools_cmd(command, card, timeout = '80'):
             return(HIDE_STATUS, running_command_dict[command]["error"], running_package)
         st, command_output = get_status_output(running_command, timeout)
     if st == SUCCESS_STATUS: # Success
+        if command == 'fwconfig':
+            command_output += "\n" + fw_module_split_cmd + "\n" + get_status_output(fw_module_split_cmd, timeout)[1]
         return(SUCCESS_STATUS, command_output, running_package)
     else: # failed
         if command_output:
