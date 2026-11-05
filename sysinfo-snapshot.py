@@ -314,8 +314,9 @@ commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --
                         "bandwidthTest"\
                         , "/etc/init.d/nv_peer_mem status","cuda_deviceQuery","ibstatus","ibstat","ucx_info -v", "dpkg -l net-tools | cat", "mdadm -D /dev/md*","hwloc-ls -v","systemctl list-units","nvsm dump health","lspci -nnPP -d 15b3:","lspci -nnPP -d ::0302"\
                         ,"lldptool -ti eth$i","lldptool -tin eth$i","lldptool -t -i eth$i -V APP -c","lldptool -t -i eth$i -V PFC","ip route show","ip -6 -s -s addr show"]
+# "mlxreg -d -y --get --op 'cmd_type' --reg_name PPCC" (mlxreg_handler_ppcc) is disabled: wrong output, to be improved in the next release
 mft_commands_collection = ["mst_commands_query_output", "mst status", "mst status -v", "mlxcables", "mlxdump", "mlxlink / mstlink", "mget_temp_query", 
-                           "mlxreg -d -y --get --op 'cmd_type' --reg_name PPCC", "mlxmcg -d", "mlxreg -d --reg_name ROCE_ACCL --get", 
+                           "mlxmcg -d", "mlxreg -d --reg_name ROCE_ACCL --get", 
                            "flint -v",  "mstflint -v"]
 commands_collection.extend(mft_commands_collection)
 available_commands_collection = [[],[]]
