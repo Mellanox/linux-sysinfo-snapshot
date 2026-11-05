@@ -127,6 +127,7 @@ driver_required_loading = False
 is_MST_installed = False
 is_MFT_installed = False
 MFT_INSTALLED_MESSAGE = ""
+SHOW_PHY_INFO_NOT_AVAILABLE_MESSAGE = "show_phy_info is not available, make sure you have installed supported MFT/MSTFLINT tool\n"
 are_inband_cables_loaded = False # If in-band cables were loaded before user runs snapshot
 mst_devices_exist = False
 all_sm_on_fabric = []
@@ -268,6 +269,7 @@ dump_tool = "resourcedump"
 resourcedump_print_flag = False
 no_mstconfig_flag = False
 no_cables_flag = False
+show_phy_info_flag = False
 all_var_log_flag = False
 if "--no_ib" in sys.argv:
     no_ib_flag = True
@@ -1716,6 +1718,8 @@ def command_with_number_of_runs(number_of_runs, device, command, suffix, pcie_de
                 filtered_file_name = output.replace(":", "").replace(".", "")
                 save_mlxlink_output_to_file(filtered_file_name,command_result_device)
             command_result_device = strip_ansi_colors(command_result_device)
+            if (mlx_st != 0 and "--show_phy_info" in suff):
+                command_result_device = SHOW_PHY_INFO_NOT_AVAILABLE_MESSAGE + command_result_device
             if (mlx_st != 0):
                 command_result_device = "Errors detected while running: " + command + " -d " + device + suffix + '"\n' + command_result_device
                 command_result += command_result_device
@@ -1808,6 +1812,8 @@ def mstcommand_d_handler(command,pcie_debug = False):
         suffix_list.append(" -e q")
     elif command == "mlxlink" or command == "mstlink":
         suffix_list = [" -m", " -e", " -c", " --show_fec", " --port_type PCIE -c -e"," --rx_fec_histogram --show_histogram"," --cable --ddm"," --cable --dump","--amber_collect"]
+        if show_phy_info_flag:
+            suffix_list.insert(-1, " --show_phy_info")
     else:
         suffix_list.append(" ")
 
@@ -6567,6 +6573,7 @@ def update_flags(args):
     global fsdump_flag
     global no_fw_regdumps_flag
     global no_cables_flag
+    global show_phy_info_flag
     global no_mstconfig_flag
     global all_var_log_flag
     global json_flag
@@ -6646,6 +6653,8 @@ def update_flags(args):
         dump_tool = args.dump_tool
     if (args.no_cables):
         no_cables_flag = True
+    if (args.show_phy_info):
+        show_phy_info_flag = True
     if (args.no_mstconfig):
         no_mstconfig_flag = True
     if (args.all_var_log):
@@ -6816,6 +6825,7 @@ def get_parsed_args():
         ("--no_mstconfig", {"help": "disable mstconfig firmware command.", "action": "store_true"}),
         ("--all_var_log", {"help": "collect all logs in /var/log/ dir", "action": "store_true"}),
         ("--no_cables", {"help": "disable mlxlink, mget_temp, mlxmcg command that is related to cables.", "action": "store_true"}),
+        ("--show_phy_info", {"help": "add mlxlink/mstlink --show_phy_info output (Rx signal detect, Rx AM lock) to the output.", "action": "store_true"}),
         ("--mtusb", {"help": "add I2C mstdump files to the output.", "action": "store_true"}),
         ("--ibdiagnet", {"help": "add ibdiagnet command to the output.", "action": "store_true"}),
         ("--ibdiagnet_ext", {"help": "add ibdiagnet ext command to the output.", "action": "store_true"}),

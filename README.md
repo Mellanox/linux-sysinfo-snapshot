@@ -133,6 +133,9 @@ disable mstconfig firmware command.
 disable mlxlink, mget_temp, mlxmcg command that is related to cables.
 5.3.29 --all_var_log \
 collect all logs in /var/log/ dir.
+5.3.30 --show_phy_info \
+By default, mlxlink/mstlink --show_phy_info is not run. Adding this flag collects it per device \
+(Rx signal detect, Rx AM lock). Requires a supported MFT/MSTFLINT version.
 6. Generate Config – Guidelines
 
 6.1 Usage  \
