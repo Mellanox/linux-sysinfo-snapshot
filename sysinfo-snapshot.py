@@ -310,7 +310,7 @@ commands_collection = ["ip -s -s link show", "ip -s -s addr show", "ovs-vsctl --
                         "ip -6 addr show", "ip -6 route show", "modinfo", "show_pretty_gids", "dkms status",\
                          "gcc --version", "python_used_version", "cma_roce_mode", "cma_roce_tos", "service firewalld status", "mlnx_qos_handler", "devlink_handler", "switchdev_legacy_mode","se_linux_status", \
                         "ufm_logs", "virsh version","virsh list --all", "virsh vcpupin", "sys_class_infiniband_ib_paameters", "sys_class_net_ecn_ib","roce counters","route -n","numastat -n","NetworkManager --print-config","networkManager_system_connections","USER",\
-                        "congestion_control_parameters","doca_pcc_counter","ecn_configuration","lsblk", "journalctl -u mlnx_snap","flint -d xx q","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
+                        "congestion_control_parameters","doca_pcc_counter","ecn_configuration","lsblk", "journalctl -u mlnx_snap","virtnet query --all","journalctl -u virtio-net-controller","/etc/mlnx_snap","snap_rpc.py emulation_functions_list","snap_rpc.py controller_list"\
                         ,"nvidia-smi topo -m", "nvidia-smi", "lspci -tv |grep 'NVIDIA' -A7", "nvidia-smi -q -d clock", "nvidia-smi --format=csv --query-supported-clocks=gr,mem", "ib_write_bw -h | grep -i cuda", "modinfo nv_peer_mem",\
                         "bandwidthTest"\
                         , "/etc/init.d/nv_peer_mem status","cuda_deviceQuery","ibstatus","ibstat","ucx_info -v", "dpkg -l net-tools | cat", "mdadm -D /dev/md*","hwloc-ls -v","systemctl list-units","nvsm dump health","lspci -nnPP -d 15b3:","lspci -nnPP -d ::0302"\
@@ -1295,9 +1295,13 @@ def is_mft_internal():
 
 #**********************************************************
 #        is_mstflint_installed Handler Helper Function
+mstflint_v_cache = None # (status, output) of "mstflint -v", reused for the collected command
+
 def is_mstflint_installed():
+    global mstflint_v_cache
     mstflint_message = "MSTFLINT is installed"
     st, output = get_status_output("mstflint -v")
+    mstflint_v_cache = (st, output)
     if st != 0:
         mstflint_installed = False
         if non_root:
@@ -1793,6 +1797,8 @@ def parse_valid_pcie_links(show_link_output):
                       "port": fields[3], "bdf": fields[4], "link_status": fields[5]})
     return links
 
+show_link_cache = {} # show_link command -> (status, output), link list doesn't change between the 3 runs
+
 def run_show_link(device):
     # Enumerate the device's valid PCIe links via --show_link, then run
     # "-c -e --depth <d> --pcie_index <pi> --node <n>" for every link.
@@ -1801,7 +1807,9 @@ def run_show_link(device):
     command_result = ""
     show_link_cmd = "%s -d %s --port_type PCIE --show_link" % (tool, device)
     command_result += "\n# %s\n\n" % show_link_cmd
-    st, show_link_output = get_status_output(show_link_cmd, "30")
+    if show_link_cmd not in show_link_cache:
+        show_link_cache[show_link_cmd] = get_status_output(show_link_cmd, "30")
+    st, show_link_output = show_link_cache[show_link_cmd]
     show_link_output = strip_ansi_colors(show_link_output)
     command_result += show_link_output + "\n"
     if st != 0:
@@ -1858,7 +1866,7 @@ def mstcommand_d_handler(command,pcie_debug = False):
     if command == "mlxconfig":
         suffix_list.append(" -e q")
     elif command == "mlxlink" or command == "mstlink":
-        suffix_list = [" -m", " -e", " -c", " --show_fec", " --port_type PCIE -c -e"," --rx_fec_histogram --show_histogram"," --cable --ddm"," --cable --dump","--amber_collect"]
+        suffix_list = [" -m -e -c --show_fec", " --port_type PCIE -c -e"," --rx_fec_histogram --show_histogram"," --cable --ddm"," --cable --dump","--amber_collect"]
         if show_phy_info_flag:
             suffix_list.insert(-1, " --show_phy_info")
     else:
@@ -1868,6 +1876,7 @@ def mstcommand_d_handler(command,pcie_debug = False):
         suffix_list = [" --port_type PCIE -c -e"]
 
     command_result = ""
+    temp_cards = set() # mget_temp is chip-wide, first function of each card only
     mst_status_rs, mst_status_output = get_mst_status_grep()
     # PCIe ports
     for pci_device in pci_devices:
@@ -1886,6 +1895,10 @@ def mstcommand_d_handler(command,pcie_debug = False):
             continue
         if command == "mlxmcg" and not ("ConnectX-3" in pci_device["name"] or "ConnectX-3 Pro" in  pci_device["name"] ):
             continue
+        if command in ("mget_temp", "mstmget_temp"):
+            if device.rsplit(".", 1)[0] in temp_cards:
+                continue
+            temp_cards.add(device.rsplit(".", 1)[0])
         for suffix in suffix_list:
             number_of_runs = 1
             if (command_result != ""):
@@ -2066,10 +2079,17 @@ def _handle_tools_cmd(command, card, timeout = '80'):
             ret_status = FAILED_STATUS
         return(ret_status, command_error, running_package)
 
+fwflint_q_cache = {} # card (without function) -> "flint q full" result, shared by all its functions
+
 def general_fw_command_output(command, card, timeout = '80'):
     command_error = "Could not run firmware command: " + command
     tool_error = "N/A"
-    if command == 'fwflint_q' or command == 'fwflint_dc':
+    if command == 'fwflint_q':
+        card_id = card.rsplit(".", 1)[0] # flint q is chip-wide, one query per card
+        if card_id not in fwflint_q_cache:
+            fwflint_q_cache[card_id] = _handle_tools_cmd(command, card, timeout)
+        return fwflint_q_cache[card_id]
+    elif command == 'fwflint_dc':
         return _handle_tools_cmd(command, card, timeout)
     elif command == 'fwdump':
         if(not no_fw_regdumps_flag):
@@ -2245,6 +2265,8 @@ def generate_mst_config(device, mstregdump_out):
         else:
             mstregdump_out.append("<td><a href=\""+ output_file +"\">mlxconfig_" + device + "</a></td><br />")
 
+fwflint_cards = set() # cards whose "flint q" / "flint dc" files were already collected
+
 def generate_card_logs(card, mstregdump_out, mst_status_output):
     if is_MFT_installed:
         if not _in_mst_status(card, mst_status_output):
@@ -2252,23 +2274,26 @@ def generate_card_logs(card, mstregdump_out, mst_status_output):
     elif is_MST_installed:
         if card in vf_pf_devices:
             return
-    output = card
-    filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
-    output_file, tool_used, is_error = general_fw_commands_handler('fwflint_q', card, filtered_file_name)
-    if is_error == 0:
-        if tool_used == 'mst':
-            mstregdump_out.append("<td><a href=\""+ output_file +"\">mstflint_" + output + "_q</a></td><br />")
-        else:
-            mstregdump_out.append("<td><a href=\""+ output_file +"\">flint_" + output + "_q</a></td><br />")
+    card_id = card.rsplit(".", 1)[0]
+    if card_id not in fwflint_cards: # flint q / dc are chip-wide, first function of each card only
+        fwflint_cards.add(card_id)
+        output = card
+        filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
+        output_file, tool_used, is_error = general_fw_commands_handler('fwflint_q', card, filtered_file_name)
+        if is_error == 0:
+            if tool_used == 'mst':
+                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstflint_" + output + "_q</a></td><br />")
+            else:
+                mstregdump_out.append("<td><a href=\""+ output_file +"\">flint_" + output + "_q</a></td><br />")
 
-    output = card
-    filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
-    output_file, tool_used, is_error = general_fw_commands_handler('fwflint_dc', card, filtered_file_name)
-    if is_error == 0:
-        if tool_used == 'mst':
-            mstregdump_out.append("<td><a href=\""+ output_file +"\">mstflint_" + output + "_dc</a></td><br />")
-        else:
-            mstregdump_out.append("<td><a href=\""+ output_file +"\">flint_" + output + "_dc</a></td><br />")
+        output = card
+        filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
+        output_file, tool_used, is_error = general_fw_commands_handler('fwflint_dc', card, filtered_file_name)
+        if is_error == 0:
+            if tool_used == 'mst':
+                mstregdump_out.append("<td><a href=\""+ output_file +"\">mstflint_" + output + "_dc</a></td><br />")
+            else:
+                mstregdump_out.append("<td><a href=\""+ output_file +"\">flint_" + output + "_dc</a></td><br />")
 
     output = card
     filtered_file_name = output.replace(":", "").replace(".", "").replace("/","")
@@ -3398,6 +3423,9 @@ def add_command_if_exists(command):
         print_err_flag = 0
         status, result = get_status_output(command)
         add_output_to_pcie_folder("lspci_tv", result)
+    elif command == "mstflint -v" and mstflint_v_cache is not None:
+        status, result = mstflint_v_cache # already ran in is_mstflint_installed
+        print_err_flag = 0 if status == 0 else 1
     else:
         # invoking regular command
         print_err_flag = 0
