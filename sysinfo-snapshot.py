@@ -2295,7 +2295,7 @@ def process_card_worker(args):
 def is_valid_mft_tools_device(device_desc):
     if "mlx5Gen PCIe Bridge" not in device_desc \
     and "DMA controller" not in device_desc \
-    and "SoC PCIe Bridge" not in device_desc:
+    and "PCIe Bridge" not in device_desc:
         return True
     return False
 
